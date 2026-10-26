@@ -38,12 +38,25 @@ Die EXE wird bei jeder Änderung automatisch von GitHub Actions gebaut (siehe *R
 2. Doppelklicke auf **`Systemprotokoll_starten.bat`** und bestätige die Frage nach Administratorrechten.
 3. Der Durchlauf dauert etwa 5–15 Minuten. Am Ende öffnet sich das PDF von selbst.
 
-Optionen:
+### Zeitraum festlegen
+
+Beim Start öffnet sich ein Fenster, in dem du den **Start** (Datum und Uhrzeit) und entweder das
+**Ende** oder eine **Dauer in Tagen** auswählst. Es gibt Schnellwahl-Knöpfe (7, 30, 90, 365 Tage,
+Alles) und einen Schnellmodus ohne SFC und Dateisystem-Scan.
+
+Alternativ per Parameter, dann erscheint kein Fenster (funktioniert mit `.bat` und `.exe`):
 
 ```bat
-Systemprotokoll_starten.bat -Tage 90     :: längerer Auswertungszeitraum (Standard: 30)
-Systemprotokoll_starten.bat -Schnell     :: ohne SFC und Dateisystem-Scan
+Systemprotokoll.exe -Von 01.09.2026 -Bis "15.10.2026 18:00"   :: fester Zeitraum
+Systemprotokoll.exe -Von 01.09.2026 -Dauer 14                 :: 14 Tage ab Start
+Systemprotokoll.exe -Tage 90                                  :: die letzten 90 Tage
+Systemprotokoll.exe -Schnell                                  :: ohne SFC und Dateisystem-Scan
+Systemprotokoll.exe -Tage 7 -Still                            :: ohne Fenster und Rückfrage
 ```
+
+Gibst du bei `-Bis` nur ein Datum an, zählt der ganze Tag mit. Ein Ende in der Zukunft wird
+auf „jetzt“ begrenzt. Reicht das Windows-Ereignisprotokoll nicht so weit zurück, steht das als
+Hinweis im Bericht.
 
 ### Optional: als EXE
 

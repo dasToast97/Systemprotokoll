@@ -22,6 +22,33 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Kompilieren fehlgeschlagen" }
           Get-FileHash Systemprotokoll.exe -Algorithm SHA256 | Format-List
 
+      - name: Skript auf Syntaxfehler pruefen
+        shell: powershell
+        run: |
+          $err = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$pwd\Systemprotokoll.ps1", [ref]$null, [ref]$err) | Out-Null
+          if ($err) { $err | ForEach-Object { Write-Host "::error::$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+
+      - name: Testlauf mit der EXE (2 Tage, Schnellmodus)
+        shell: powershell
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP 'test'
+          New-Item -ItemType Directory $ziel -Force | Out-Null
+          $von = (Get-Date).AddDays(-2).ToString('dd.MM.yyyy HH:mm')
+          $p = Start-Process .\Systemprotokoll.exe -ArgumentList '-Von', "`"$von`"", '-Dauer', '2', '-Schnell', '-Still', '-Ziel', "`"$ziel`"" -NoNewWindow -Wait -PassThru
+          Write-Host "Exit-Code: $($p.ExitCode)"
+          $bericht = Get-ChildItem $ziel -Recurse -Filter Zustandsbericht.html | Select-Object -First 1
+          if (-not $bericht) { throw 'Kein Bericht erzeugt' }
+          $html = Get-Content $bericht.FullName -Raw
+          if ($html -notmatch 'Ausgewerteter Zeitraum') { throw 'Zeitraum fehlt im Bericht' }
+          Get-ChildItem $bericht.Directory -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: Testbericht hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: testbericht
+          path: ${{ runner.temp }}/test
+
       - name: Paket packen
         shell: pwsh
         run: |

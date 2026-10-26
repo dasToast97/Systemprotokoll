@@ -10,8 +10,32 @@
 
     Es werden KEINE Aenderungen am System vorgenommen (nur lesende Pruefungen).
 
+.PARAMETER Von
+    Beginn des Auswertungszeitraums, z.B. "01.09.2026" oder "01.09.2026 08:00".
+
+.PARAMETER Bis
+    Ende des Auswertungszeitraums (Standard: jetzt), z.B. "15.10.2026 18:00".
+
+.PARAMETER Dauer
+    Laenge des Zeitraums in Tagen ab -Von (statt -Bis).
+
 .PARAMETER Tage
-    Zeitraum der Ereignisprotokoll-Auswertung in Tagen (Standard: 30).
+    Kurzform: die letzten N Tage bis jetzt.
+
+.PARAMETER OhneDialog
+    Kein Auswahlfenster anzeigen; ohne weitere Angaben gelten die letzten 30 Tage.
+
+    Ohne Zeitraum-Parameter erscheint beim Start ein Fenster zur Auswahl.
+
+.PARAMETER Still
+    Ohne Fenster und ohne Rueckfrage am Ende (z.B. fuer geplante Aufgaben); oeffnet den Bericht nicht.
+
+.EXAMPLE
+    .\Systemprotokoll.ps1 -Von 01.09.2026 -Bis "15.10.2026 18:00"
+.EXAMPLE
+    .\Systemprotokoll.ps1 -Von 01.09.2026 -Dauer 14
+.EXAMPLE
+    .\Systemprotokoll.ps1 -Tage 90 -Schnell
 
 .PARAMETER Ziel
     Ordner, in dem das Protokoll abgelegt wird (Standard: Desktop).
@@ -21,9 +45,14 @@
 #>
 [CmdletBinding()]
 param(
-    [int]$Tage = 30,
+    [string]$Von,
+    [string]$Bis,
+    [double]$Dauer,
+    [int]$Tage,
     [string]$Ziel = [Environment]::GetFolderPath('Desktop'),
-    [switch]$Schnell
+    [switch]$Schnell,
+    [switch]$OhneDialog,
+    [switch]$Still
 )
 
 # ---------------------------------------------------------------------------
@@ -32,8 +61,12 @@ param(
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host 'Starte mit Administratorrechten neu ...' -ForegroundColor Yellow
-    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Tage', $Tage, '-Ziel', "`"$Ziel`"")
-    if ($Schnell) { $argList += '-Schnell' }
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"")
+    foreach ($k in $PSBoundParameters.Keys) {
+        $v = $PSBoundParameters[$k]
+        if ($v -is [switch]) { if ($v.IsPresent) { $argList += "-$k" } }
+        else { $argList += "-$k"; $argList += "`"$v`"" }
+    }
     Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList
     exit
 }
@@ -42,17 +75,163 @@ $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 try { $Host.UI.RawUI.WindowTitle = 'Systemzustands-Protokoll' } catch {}
 
-$jetzt     = Get-Date
+$jetzt = Get-Date
+
+# ---------------------------------------------------------------------------
+# Auswertungszeitraum festlegen (Parameter oder Auswahlfenster)
+# ---------------------------------------------------------------------------
+function ConvertTo-Zeitpunkt([string]$Text, [string]$Name) {
+    $formate = 'dd.MM.yyyy HH:mm:ss', 'dd.MM.yyyy HH:mm', 'dd.MM.yyyy', 'd.M.yyyy HH:mm', 'd.M.yyyy',
+               'yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd HH:mm', 'yyyy-MM-dd', 'yyyy-MM-ddTHH:mm:ss', 'yyyy-MM-ddTHH:mm'
+    $wert = [datetime]::MinValue
+    if ([datetime]::TryParseExact($Text.Trim(), [string[]]$formate, [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeLocal, [ref]$wert)) { return $wert }
+    if ([datetime]::TryParse($Text, [Globalization.CultureInfo]::GetCultureInfo('de-DE'), [Globalization.DateTimeStyles]::AssumeLocal, [ref]$wert)) { return $wert }
+    throw "Ungueltige Angabe fuer -${Name}: '$Text' (Beispiel: 01.09.2026 oder 01.09.2026 08:00)"
+}
+
+function Show-ZeitraumDialog([datetime]$StartVorschlag, [datetime]$EndeVorschlag, [bool]$SchnellVorschlag) {
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    $f = New-Object System.Windows.Forms.Form
+    $f.Text = 'Systemzustands-Protokoll - Zeitraum'
+    $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
+    $f.StartPosition = 'CenterScreen'; $f.TopMost = $true
+    $f.ClientSize = New-Object System.Drawing.Size(440, 330)
+    $f.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+
+    $info = New-Object System.Windows.Forms.Label
+    $info.Text = 'Welcher Zeitraum soll in den Ereignisprotokollen ausgewertet werden?'
+    $info.SetBounds(16, 14, 410, 22); $f.Controls.Add($info)
+
+    $lStart = New-Object System.Windows.Forms.Label; $lStart.Text = 'Start:'; $lStart.SetBounds(16, 52, 90, 22); $f.Controls.Add($lStart)
+    $dStart = New-Object System.Windows.Forms.DateTimePicker
+    $dStart.Format = 'Custom'; $dStart.CustomFormat = 'dd.MM.yyyy   HH:mm'; $dStart.ShowUpDown = $false
+    $dStart.SetBounds(110, 48, 200, 26); $dStart.Value = $StartVorschlag; $f.Controls.Add($dStart)
+
+    $rEnde = New-Object System.Windows.Forms.RadioButton; $rEnde.Text = 'Ende:'; $rEnde.Checked = $true
+    $rEnde.SetBounds(16, 88, 90, 24); $f.Controls.Add($rEnde)
+    $dEnde = New-Object System.Windows.Forms.DateTimePicker
+    $dEnde.Format = 'Custom'; $dEnde.CustomFormat = 'dd.MM.yyyy   HH:mm'
+    $dEnde.SetBounds(110, 86, 200, 26); $dEnde.Value = $EndeVorschlag; $f.Controls.Add($dEnde)
+    $bJetzt = New-Object System.Windows.Forms.Button; $bJetzt.Text = 'Jetzt'; $bJetzt.SetBounds(318, 85, 70, 28); $f.Controls.Add($bJetzt)
+
+    $rDauer = New-Object System.Windows.Forms.RadioButton; $rDauer.Text = 'Dauer:'
+    $rDauer.SetBounds(16, 124, 90, 24); $f.Controls.Add($rDauer)
+    $nDauer = New-Object System.Windows.Forms.NumericUpDown
+    $nDauer.Minimum = 1; $nDauer.Maximum = 3650; $nDauer.Value = 30; $nDauer.Enabled = $false
+    $nDauer.SetBounds(110, 122, 80, 26); $f.Controls.Add($nDauer)
+    $lTage = New-Object System.Windows.Forms.Label; $lTage.Text = 'Tage ab Start'; $lTage.SetBounds(198, 125, 120, 22); $f.Controls.Add($lTage)
+
+    $lSchnell = New-Object System.Windows.Forms.Label; $lSchnell.Text = 'Schnellwahl (bis jetzt):'; $lSchnell.SetBounds(16, 166, 200, 20); $f.Controls.Add($lSchnell)
+    $x = 16
+    foreach ($t in 7, 30, 90, 365) {
+        $b = New-Object System.Windows.Forms.Button
+        $b.Text = "$t Tage"; $b.Tag = $t; $b.SetBounds($x, 188, 78, 28); $x += 84
+        $b.Add_Click({
+            $rEnde.Checked = $true
+            $dEnde.Value = Get-Date
+            $dStart.Value = (Get-Date).AddDays(-[int]$this.Tag)
+        })
+        $f.Controls.Add($b)
+    }
+    $bAlles = New-Object System.Windows.Forms.Button; $bAlles.Text = 'Alles'; $bAlles.SetBounds($x, 188, 70, 28); $f.Controls.Add($bAlles)
+
+    $cSchnell = New-Object System.Windows.Forms.CheckBox
+    $cSchnell.Text = 'Schnellmodus (ohne SFC und Dateisystem-Scan)'; $cSchnell.Checked = $SchnellVorschlag
+    $cSchnell.SetBounds(16, 232, 400, 24); $f.Controls.Add($cSchnell)
+
+    $lFehler = New-Object System.Windows.Forms.Label; $lFehler.ForeColor = [System.Drawing.Color]::Firebrick
+    $lFehler.SetBounds(16, 262, 410, 20); $f.Controls.Add($lFehler)
+
+    $bOk = New-Object System.Windows.Forms.Button; $bOk.Text = 'Protokoll starten'; $bOk.SetBounds(196, 288, 140, 32); $f.Controls.Add($bOk)
+    $bAbbr = New-Object System.Windows.Forms.Button; $bAbbr.Text = 'Abbrechen'; $bAbbr.DialogResult = 'Cancel'
+    $bAbbr.SetBounds(344, 288, 84, 32); $f.Controls.Add($bAbbr)
+    $f.AcceptButton = $bOk; $f.CancelButton = $bAbbr
+
+    $bJetzt.Add_Click({ $rEnde.Checked = $true; $dEnde.Value = Get-Date })
+    $rEnde.Add_CheckedChanged({ $dEnde.Enabled = $rEnde.Checked; $nDauer.Enabled = -not $rEnde.Checked })
+    $bAlles.Add_Click({
+        $aelteste = $null
+        try { $aelteste = (Get-WinEvent -LogName System -MaxEvents 1 -Oldest -ErrorAction Stop).TimeCreated } catch {}
+        if (-not $aelteste) { $aelteste = (Get-Date).AddYears(-1) }
+        $rEnde.Checked = $true; $dEnde.Value = Get-Date; $dStart.Value = $aelteste
+    })
+    $bOk.Add_Click({
+        $s = $dStart.Value
+        $e = if ($rEnde.Checked) { $dEnde.Value } else { $s.AddDays([double]$nDauer.Value) }
+        if ($e -le $s) { $lFehler.Text = 'Das Ende muss nach dem Start liegen.'; return }
+        if ($s -gt (Get-Date)) { $lFehler.Text = 'Der Start darf nicht in der Zukunft liegen.'; return }
+        $f.Tag = @{ Start = $s; Ende = $e; Schnell = $cSchnell.Checked }
+        $f.DialogResult = 'OK'; $f.Close()
+    })
+
+    if ($f.ShowDialog() -ne 'OK') { return $null }
+    return $f.Tag
+}
+
+$zeitAngegeben = $PSBoundParameters.ContainsKey('Von') -or $PSBoundParameters.ContainsKey('Bis') -or
+                 $PSBoundParameters.ContainsKey('Dauer') -or $PSBoundParameters.ContainsKey('Tage')
+try {
+    if ($Tage -gt 0 -and -not $Von) { $startZeit = $jetzt.AddDays(-$Tage); $endZeit = $jetzt }
+    else {
+        $startZeit = if ($Von) { ConvertTo-Zeitpunkt $Von 'Von' } else { $jetzt.AddDays(-30) }
+        if ($Bis) { $endZeit = ConvertTo-Zeitpunkt $Bis 'Bis' }
+        elseif ($Dauer -gt 0) { $endZeit = $startZeit.AddDays($Dauer) }
+        elseif ($Tage -gt 0) { $endZeit = $startZeit.AddDays($Tage) }
+        else { $endZeit = $jetzt }
+        # Nur ein Datum ohne Uhrzeit bei -Bis: ganzen Tag einschliessen
+        if ($Bis -and $endZeit.TimeOfDay -eq [TimeSpan]::Zero) { $endZeit = $endZeit.AddDays(1).AddSeconds(-1) }
+    }
+}
+catch {
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    if (-not $Still) { Read-Host 'Enter druecken zum Beenden' }
+    exit 1
+}
+
+if (-not $zeitAngegeben -and -not $OhneDialog -and -not $Still) {
+    $wahl = $null
+    try { $wahl = Show-ZeitraumDialog $startZeit $endZeit ([bool]$Schnell) }
+    catch {
+        # Fallback ohne grafische Oberflaeche
+        Write-Host 'Zeitraum eingeben (leer lassen = letzte 30 Tage):' -ForegroundColor Cyan
+        $eVon = Read-Host '  Start (TT.MM.JJJJ [HH:MM])'
+        if ($eVon) {
+            $s = ConvertTo-Zeitpunkt $eVon 'Von'
+            $eBis = Read-Host '  Ende (TT.MM.JJJJ [HH:MM]) oder Dauer in Tagen, leer = jetzt'
+            if (-not $eBis) { $e = $jetzt }
+            elseif ($eBis -match '^\d+([.,]\d+)?$') { $e = $s.AddDays([double]($eBis -replace ',', '.')) }
+            else { $e = ConvertTo-Zeitpunkt $eBis 'Bis' }
+            $wahl = @{ Start = $s; Ende = $e; Schnell = [bool]$Schnell }
+        }
+        else { $wahl = @{ Start = $startZeit; Ende = $endZeit; Schnell = [bool]$Schnell } }
+    }
+    if (-not $wahl) { Write-Host 'Abgebrochen.' -ForegroundColor Yellow; exit 0 }
+    $startZeit = $wahl.Start; $endZeit = $wahl.Ende; $Schnell = [switch]$wahl.Schnell
+}
+
+if ($endZeit -gt $jetzt) { $endZeit = $jetzt }
+if ($endZeit -le $startZeit) {
+    Write-Host 'Fehler: Das Ende des Zeitraums muss nach dem Start liegen.' -ForegroundColor Red
+    if (-not $Still) { Read-Host 'Enter druecken zum Beenden' }
+    exit 1
+}
+$spanne       = $endZeit - $startZeit
+$zeitraumText = '{0} bis {1} ({2:N1} Tage)' -f $startZeit.ToString('dd.MM.yyyy HH:mm'), $endZeit.ToString('dd.MM.yyyy HH:mm'), $spanne.TotalDays
+$zeitraumKurz = '{0} - {1}' -f $startZeit.ToString('dd.MM.yyyy'), $endZeit.ToString('dd.MM.yyyy')
+
 $stempel   = $jetzt.ToString('yyyy-MM-dd_HH-mm-ss')
 $ordner    = Join-Path $Ziel ('Systemprotokoll_{0}_{1}' -f $env:COMPUTERNAME, $stempel)
 $rohOrdner = Join-Path $ordner 'Rohdaten'
 New-Item -ItemType Directory -Path $rohOrdner -Force | Out-Null
-$startZeit = $jetzt.AddDays(-$Tage)
 
 Write-Host ''
 Write-Host '=====================================================' -ForegroundColor Green
 Write-Host '   Systemzustands-Protokoll' -ForegroundColor Green
-Write-Host "   Zeitraum: letzte $Tage Tage  |  Ausgabe: $ordner" -ForegroundColor Green
+Write-Host "   Zeitraum: $zeitraumText" -ForegroundColor Green
+Write-Host "   Ausgabe : $ordner" -ForegroundColor Green
 Write-Host '=====================================================' -ForegroundColor Green
 Write-Host ''
 
@@ -119,7 +298,7 @@ try { $aeltestesEreignis = (Get-WinEvent -LogName System -MaxEvents 1 -Oldest -E
 
 $sys = [ordered]@{
     'Protokoll erstellt'               = $jetzt.ToString('dd.MM.yyyy HH:mm:ss') + ' (' + [TimeZoneInfo]::Local.Id + ')'
-    'Ausgewerteter Zeitraum'           = $startZeit.ToString('dd.MM.yyyy') + ' bis ' + $jetzt.ToString('dd.MM.yyyy') + " ($Tage Tage)"
+    'Ausgewerteter Zeitraum'           = $zeitraumText
     'Systemprotokoll reicht zurueck bis' = $(if ($aeltestesEreignis) { $aeltestesEreignis.ToString('dd.MM.yyyy HH:mm') } else { 'unbekannt' })
     'Benutzer'                         = "$env:USERDOMAIN\$env:USERNAME"
     'Computername'                     = $env:COMPUTERNAME
@@ -135,6 +314,9 @@ $sys = [ordered]@{
     'Prozessor'                        = ($cpu | ForEach-Object { "$($_.Name.Trim()) ($($_.NumberOfCores) Kerne / $($_.NumberOfLogicalProcessors) Threads)" }) -join '; '
     'Arbeitsspeicher gesamt'           = '{0:N1} GB' -f ($cs.TotalPhysicalMemory / 1GB)
     'Grafik'                           = ($gpu | ForEach-Object { $_.Name }) -join '; '
+}
+if ($aeltestesEreignis -and $aeltestesEreignis -gt $startZeit) {
+    Add-Befund 'Zeitraum' 'HINWEIS' ('Das Systemprotokoll reicht nur bis {0} zurueck; fuer die Zeit davor liegen keine Eintraege vor' -f $aeltestesEreignis.ToString('dd.MM.yyyy HH:mm'))
 }
 $sysTab = $sys.GetEnumerator() | ForEach-Object { [pscustomobject]@{ Eigenschaft = $_.Key; Wert = [string]$_.Value } }
 
@@ -249,7 +431,7 @@ $volTab = foreach ($v in $vols) {
 # ---------------------------------------------------------------------------
 # 3. Ereignisprotokolle: Hardware-, E/A- und kritische Fehler
 # ---------------------------------------------------------------------------
-Schritt "Ereignisprotokolle der letzten $Tage Tage"
+Schritt "Ereignisprotokolle $zeitraumKurz"
 $Pruefungen = @(
     @{ Kat = 'Datentraeger E/A';            Prov = 'disk';                                        Ids = @(7, 11, 15, 51, 52, 153, 154); Lvl = $null }
     @{ Kat = 'Dateisystem (NTFS)';          Prov = 'Ntfs';                                        Ids = $null; Lvl = @(1, 2) }
@@ -285,7 +467,7 @@ $Schwere = @{
 
 $hwEvents = New-Object System.Collections.Generic.List[object]
 foreach ($p in $Pruefungen) {
-    $f = @{ LogName = 'System'; ProviderName = $p.Prov; StartTime = $startZeit }
+    $f = @{ LogName = 'System'; ProviderName = $p.Prov; StartTime = $startZeit; EndTime = $endZeit }
     if ($p.Ids) { $f.Id = $p.Ids }
     if ($p.Lvl) { $f.Level = $p.Lvl }
     try {
@@ -326,8 +508,8 @@ $hwTab = $hwEvents | Sort-Object Zeit -Descending | Select-Object * -ExcludeProp
 # Alle kritischen Fehler und Fehler (System + Anwendung)
 Schritt 'Allgemeine kritische Fehler und Fehler'
 $sysErr = @(); $appErr = @()
-try { $sysErr = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1, 2; StartTime = $startZeit } -ErrorAction Stop) } catch {}
-try { $appErr = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 1, 2; StartTime = $startZeit } -ErrorAction Stop) } catch {}
+try { $sysErr = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1, 2; StartTime = $startZeit; EndTime = $endZeit } -ErrorAction Stop) } catch {}
+try { $appErr = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 1, 2; StartTime = $startZeit; EndTime = $endZeit } -ErrorAction Stop) } catch {}
 
 function Zusammenfassen($events) {
     $events | Group-Object ProviderName, Id | Sort-Object Count -Descending | ForEach-Object {
@@ -400,9 +582,9 @@ if (Test-Path "$env:SystemRoot\MEMORY.DMP") { $dumps += Get-Item "$env:SystemRoo
 $dumpTab = $dumps | Sort-Object LastWriteTime -Descending | ForEach-Object {
     [pscustomobject]@{ 'Datei' = $_.FullName; 'Datum' = $_.LastWriteTime; 'Groesse (KB)' = [math]::Round($_.Length / 1KB) }
 }
-$dumpsNeu = @($dumps | Where-Object { $_.LastWriteTime -ge $startZeit })
+$dumpsNeu = @($dumps | Where-Object { $_.LastWriteTime -ge $startZeit -and $_.LastWriteTime -le $endZeit })
 if ($dumpsNeu.Count -gt 0) { Add-Befund 'Absturzabbilder' 'WARNUNG' "$($dumpsNeu.Count) Absturzabbild(er) im Zeitraum" }
-elseif ($dumps.Count -gt 0) { Add-Befund 'Absturzabbilder' 'HINWEIS' "$($dumps.Count) aeltere(s) Absturzabbild(er) vor dem Zeitraum" }
+elseif ($dumps.Count -gt 0) { Add-Befund 'Absturzabbilder' 'HINWEIS' "$($dumps.Count) Absturzabbild(er) ausserhalb des Zeitraums" }
 else { Add-Befund 'Absturzabbilder' 'OK' 'Keine Absturzabbilder vorhanden' }
 
 # ---------------------------------------------------------------------------
@@ -414,7 +596,7 @@ try {
     $rel = @(Get-CimInstance Win32_ReliabilityStabilityMetrics -ErrorAction Stop | Sort-Object TimeGenerated -Descending)
     if ($rel.Count -gt 0) {
         $akt = [math]::Round($rel[0].SystemStabilityIndex, 2)
-        $imZeitraum = @($rel | Where-Object { $_.TimeGenerated -ge $startZeit })
+        $imZeitraum = @($rel | Where-Object { $_.TimeGenerated -ge $startZeit -and $_.TimeGenerated -le $endZeit })
         $min = if ($imZeitraum.Count) { [math]::Round(($imZeitraum | Measure-Object SystemStabilityIndex -Minimum).Minimum, 2) } else { $akt }
         $relTab = [pscustomobject]@{ 'Aktueller Index (1-10)' = $akt; 'Minimum im Zeitraum' = $min; 'Stand vom' = $rel[0].TimeGenerated }
         if ($akt -ge 7) { Add-Befund 'Zuverlaessigkeit' 'OK' "Stabilitaetsindex $akt von 10" }
@@ -490,7 +672,7 @@ Add-Abschnitt -Titel 'Grafik' -Daten $gpuTab
 Add-Abschnitt -Titel 'Physische Datentraeger (Zustand und Zuverlaessigkeitszaehler)' -Daten $diskTab -Info 'Leere Felder bedeuten, dass das Laufwerk diesen Wert nicht an Windows meldet.'
 Add-Abschnitt -Titel 'SMART-Ausfallvorhersage' -Daten $smartTab -Leer 'Keine SMART-Daten ueber WMI verfuegbar (bei NVMe-Laufwerken ueblich, siehe Zustand oben).'
 Add-Abschnitt -Titel 'Laufwerke / Volumes' -Daten $volTab
-Add-Abschnitt -Titel "Hardware-, E/A- und Absturz-Ereignisse (letzte $Tage Tage)" -Daten $hwTab -Leer 'Keine Hardware-, E/A- oder Absturz-Ereignisse im Zeitraum.' -Info 'Geprueft: Datentraeger-E/A, NTFS, Speichercontroller, WHEA-Hardwarefehler, Bluescreens, unerwartete Neustarts, Grafiktreiber-Resets, thermische Drosselung, Windows-Speichertest.'
+Add-Abschnitt -Titel "Hardware-, E/A- und Absturz-Ereignisse ($zeitraumKurz)" -Daten $hwTab -Leer 'Keine Hardware-, E/A- oder Absturz-Ereignisse im Zeitraum.' -Info 'Geprueft: Datentraeger-E/A, NTFS, Speichercontroller, WHEA-Hardwarefehler, Bluescreens, unerwartete Neustarts, Grafiktreiber-Resets, thermische Drosselung, Windows-Speichertest.'
 Add-Abschnitt -Titel 'Geraete-Manager: Geraete mit Problemen' -Daten $devTab -Leer 'Alle Geraete arbeiten ohne Fehlercode.'
 Add-Abschnitt -Titel 'Absturzabbilder (Bluescreen-Dumps)' -Daten $dumpTab -Leer 'Keine Absturzabbilder vorhanden.'
 Add-Abschnitt -Titel 'Zuverlaessigkeitsindex' -Daten $relTab -Leer 'Nicht verfuegbar.'
@@ -530,7 +712,7 @@ $html = @"
 <title>Systemzustand $(HtmlEnc $env:COMPUTERNAME) $($jetzt.ToString('dd.MM.yyyy'))</title>
 <style>$css</style></head><body>
 <h1>Systemzustands-Protokoll</h1>
-<div class="sub">$(HtmlEnc "$($cs.Manufacturer) $($cs.Model)") &middot; Seriennummer: $(HtmlEnc $bios.SerialNumber) &middot; erstellt am $($jetzt.ToString('dd.MM.yyyy')) um $($jetzt.ToString('HH:mm:ss')) Uhr</div>
+<div class="sub">$(HtmlEnc "$($cs.Manufacturer) $($cs.Model)") &middot; Seriennummer: $(HtmlEnc $bios.SerialNumber) &middot; erstellt am $($jetzt.ToString('dd.MM.yyyy')) um $($jetzt.ToString('HH:mm:ss')) Uhr<br>Ausgewerteter Zeitraum: $(HtmlEnc $zeitraumText)</div>
 <div class="gesamt $gesamtKlasse">Gesamtbewertung: $(HtmlEnc $gesamt)</div>
 <div class="zahlen"><span style="color:var(--krit)">Kritisch: $nKrit</span><span style="color:var(--warn)">Warnungen: $nWarn</span><span style="color:var(--hinw)">Hinweise: $nHinw</span><span style="color:var(--ok)">OK: $nOk</span></div>
 $($Abschnitte -join "`n")
@@ -585,6 +767,7 @@ Write-Host ''
 Write-Host '=====================================================' -ForegroundColor Green
 $farbe = 'Green'; if ($nKrit) { $farbe = 'Red' } elseif ($nWarn) { $farbe = 'Yellow' }
 Write-Host " Gesamtbewertung: $gesamt" -ForegroundColor $farbe
+Write-Host " Zeitraum: $zeitraumText"
 Write-Host " Kritisch: $nKrit | Warnungen: $nWarn | Hinweise: $nHinw | OK: $nOk"
 Write-Host ''
 Write-Host " Ordner : $ordner"
@@ -596,7 +779,9 @@ Write-Host ' Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Sp
 Write-Host ' damit der Zeitpunkt der Erstellung unabhaengig belegt ist.'
 Write-Host '=====================================================' -ForegroundColor Green
 
-if (Test-Path $berichtPdf) { Start-Process $berichtPdf } else { Start-Process $berichtHtml }
-Start-Process explorer.exe $ordner
-Write-Host ''
-Read-Host 'Enter druecken zum Beenden'
+if (-not $Still) {
+    if (Test-Path $berichtPdf) { Start-Process $berichtPdf } else { Start-Process $berichtHtml }
+    Start-Process explorer.exe $ordner
+    Write-Host ''
+    Read-Host 'Enter druecken zum Beenden'
+}
