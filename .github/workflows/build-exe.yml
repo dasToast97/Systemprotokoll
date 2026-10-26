@@ -1,0 +1,40 @@
+name: EXE bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Systemprotokoll.exe kompilieren
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /target:exe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs
+          if ($LASTEXITCODE -ne 0) { throw "Kompilieren fehlgeschlagen" }
+          Get-FileHash Systemprotokoll.exe -Algorithm SHA256 | Format-List
+
+      - name: Paket packen
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory Systemprotokoll-Tool | Out-Null
+          Copy-Item Systemprotokoll.exe, Systemprotokoll.ps1, Systemprotokoll_starten.bat, README.md, LICENSE Systemprotokoll-Tool/
+          Compress-Archive Systemprotokoll-Tool/* Systemprotokoll-Tool.zip
+
+      - name: Release veroeffentlichen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v1.0.${{ github.run_number }}"
+          $hash = (Get-FileHash Systemprotokoll.exe -Algorithm SHA256).Hash
+          $notes = "Systemprotokoll.exe herunterladen, doppelklicken, Administratorrechte bestaetigen.`n`nSHA256 der EXE: $hash"
+          gh release create $tag Systemprotokoll.exe Systemprotokoll-Tool.zip --title "Systemprotokoll $tag" --notes $notes --latest

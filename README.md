@@ -26,7 +26,13 @@ mit demselben Inhalt:
 - `Rohdaten/*.evtx`: unveränderte Original-Ereignisprotokolle
 - `Pruefsummen_SHA256.txt`: Prüfsummen aller Dateien
 
-## Benutzung
+## Download
+
+**[Systemprotokoll.exe herunterladen](../../releases/latest/download/Systemprotokoll.exe)**: Doppelklick, Administratorrechte bestätigen, fertig.
+
+Die EXE wird bei jeder Änderung automatisch von GitHub Actions gebaut (siehe *Releases*).
+
+## Benutzung ohne EXE
 
 1. Lade das Repository herunter: **Code → Download ZIP**. Danach Rechtsklick auf die ZIP-Datei und **„Alle extrahieren“**.
 2. Doppelklicke auf **`Systemprotokoll_starten.bat`** und bestätige die Frage nach Administratorrechten.
