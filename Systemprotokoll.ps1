@@ -300,6 +300,7 @@ $sys = [ordered]@{
     'Protokoll erstellt'               = $jetzt.ToString('dd.MM.yyyy HH:mm:ss') + ' (' + [TimeZoneInfo]::Local.Id + ')'
     'Ausgewerteter Zeitraum'           = $zeitraumText
     'Systemprotokoll reicht zurueck bis' = $(if ($aeltestesEreignis) { $aeltestesEreignis.ToString('dd.MM.yyyy HH:mm') } else { 'unbekannt' })
+    'Tool-Version'                     = $(if ($env:SYSTEMPROTOKOLL_VERSION) { "Systemprotokoll.exe $env:SYSTEMPROTOKOLL_VERSION" } else { 'Skript (ohne EXE)' })
     'Benutzer'                         = "$env:USERDOMAIN\$env:USERNAME"
     'Computername'                     = $env:COMPUTERNAME
     'Hersteller'                       = $cs.Manufacturer

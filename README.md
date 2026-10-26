@@ -32,6 +32,17 @@ mit demselben Inhalt:
 
 Die EXE wird bei jeder Änderung automatisch von GitHub Actions gebaut (siehe *Releases*).
 
+### Automatische Updates
+
+Bei jedem Start prüft die EXE, ob es auf GitHub eine neuere Version gibt. Falls ja, erscheint ein
+Fenster mit den Neuerungen und den Optionen **Jetzt aktualisieren**, **Später** und
+**Diese Version überspringen**. Beim Aktualisieren wird die neue EXE heruntergeladen, per
+SHA256 geprüft, an die Stelle der alten gelegt und sofort gestartet.
+
+Ohne Internet oder mit `--kein-update` startet das Tool ohne Prüfung. Im stillen Modus (`-Still`)
+wird nicht nach Updates gefragt. `Systemprotokoll.exe --version` zeigt die installierte Version.
+Selbst gebaute EXEs (`EXE_erstellen.bat`) haben kein Auto-Update.
+
 ## Benutzung ohne EXE
 
 1. Lade das Repository herunter: **Code → Download ZIP**. Danach Rechtsklick auf die ZIP-Datei und **„Alle extrahieren“**.

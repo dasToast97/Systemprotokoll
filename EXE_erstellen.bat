@@ -14,7 +14,8 @@ if not exist "Systemprotokoll.ps1" (
     exit /b 1
 )
 echo Erstelle Systemprotokoll.exe ...
-"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs
+for %%I in ("%CSC%") do set "FW=%%~dpI"
+"%CSC%" /nologo /target:exe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:"%FW%System.Web.Extensions.dll" /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs Updater.cs BuildInfo.cs
 if errorlevel 1 (
     echo.
     echo Beim Erstellen ist ein Fehler aufgetreten - siehe Meldung oben.
@@ -24,4 +25,5 @@ if errorlevel 1 (
 echo.
 echo Fertig: %~dp0Systemprotokoll.exe
 echo Die EXE enthaelt alles und kann allein weitergegeben oder auf einen USB-Stick kopiert werden.
+echo Hinweis: Selbst gebaute EXEs haben kein Auto-Update. Die EXE aus den GitHub Releases aktualisiert sich selbst.
 pause

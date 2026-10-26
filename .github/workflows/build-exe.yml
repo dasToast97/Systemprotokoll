@@ -13,14 +13,40 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Versionsinfo erzeugen
+        shell: pwsh
+        run: |
+          $version = "1.0.${{ github.run_number }}"
+          "VERSION=$version" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          @"
+          static class BuildInfo
+          {
+              public const string Version = "$version";
+              public const string Repo = "${{ github.repository }}";
+          }
+          "@ | Set-Content BuildInfo.cs -Encoding UTF8
 
       - name: Systemprotokoll.exe kompilieren
         shell: pwsh
         run: |
-          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /target:exe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs
+          $fw = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
+          & "$fw\csc.exe" /nologo /target:exe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest `
+            /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:"$fw\System.Web.Extensions.dll" `
+            /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs Updater.cs BuildInfo.cs
           if ($LASTEXITCODE -ne 0) { throw "Kompilieren fehlgeschlagen" }
           Get-FileHash Systemprotokoll.exe -Algorithm SHA256 | Format-List
+
+      - name: Version und Update-Pruefung testen
+        shell: powershell
+        run: |
+          $v = (& .\Systemprotokoll.exe --version | Out-String).Trim()
+          Write-Host "EXE-Version: $v"
+          if ($v -ne $env:VERSION) { throw "Falsche Version: $v" }
+          & .\Systemprotokoll.exe --update-test
+          if ($LASTEXITCODE -ne 0) { throw "Update-Pruefung fehlgeschlagen" }
 
       - name: Skript auf Syntaxfehler pruefen
         shell: powershell
@@ -61,7 +87,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v1.0.${{ github.run_number }}"
+          $tag = "v$env:VERSION"
           $hash = (Get-FileHash Systemprotokoll.exe -Algorithm SHA256).Hash
-          $notes = "Systemprotokoll.exe herunterladen, doppelklicken, Administratorrechte bestaetigen.`n`nSHA256 der EXE: $hash"
+          $aenderung = (git log -1 --pretty=%B | Where-Object { $_ -notmatch '^(Co-Authored-By|Claude-Session):' }) -join "`n"
+          $notes = "## Neu in dieser Version`n`n$($aenderung.Trim())`n`n---`nSystemprotokoll.exe herunterladen, doppelklicken, Administratorrechte bestaetigen. Bereits installierte Versionen aktualisieren sich beim naechsten Start selbst.`n`nSHA256 der EXE: $hash"
           gh release create $tag Systemprotokoll.exe Systemprotokoll-Tool.zip --title "Systemprotokoll $tag" --notes $notes --latest
