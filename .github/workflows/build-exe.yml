@@ -2,7 +2,7 @@ name: EXE bauen
 
 on:
   push:
-    branches: [main]
+    branches: [main, auto-update]   # auto-update = Testzweig: bauen und testen, aber kein Release
   workflow_dispatch:
 
 permissions:
@@ -33,20 +33,11 @@ jobs:
         shell: pwsh
         run: |
           $fw = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
-          & "$fw\csc.exe" /nologo /target:exe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest `
-            /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:"$fw\System.Web.Extensions.dll" `
-            /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs Updater.cs BuildInfo.cs
+          & "$fw\csc.exe" /nologo /target:winexe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest `
+            /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:"$fw\System.Web.Extensions.dll" `
+            /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs Updater.cs Oberflaeche.cs BuildInfo.cs
           if ($LASTEXITCODE -ne 0) { throw "Kompilieren fehlgeschlagen" }
           Get-FileHash Systemprotokoll.exe -Algorithm SHA256 | Format-List
-
-      - name: Version und Update-Pruefung testen
-        shell: powershell
-        run: |
-          $v = (& .\Systemprotokoll.exe --version | Out-String).Trim()
-          Write-Host "EXE-Version: $v"
-          if ($v -ne $env:VERSION) { throw "Falsche Version: $v" }
-          & .\Systemprotokoll.exe --update-test
-          if ($LASTEXITCODE -ne 0) { throw "Update-Pruefung fehlgeschlagen" }
 
       - name: Skript auf Syntaxfehler pruefen
         shell: powershell
@@ -55,27 +46,71 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("$pwd\Systemprotokoll.ps1", [ref]$null, [ref]$err) | Out-Null
           if ($err) { $err | ForEach-Object { Write-Host "::error::$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
 
-      - name: Testlauf mit der EXE (2 Tage, Schnellmodus)
+      - name: Version und Update-Pruefung testen
         shell: powershell
         run: |
-          $ziel = Join-Path $env:RUNNER_TEMP 'test'
-          New-Item -ItemType Directory $ziel -Force | Out-Null
+          function Exe([string[]]$a) {
+            $out = Join-Path $env:RUNNER_TEMP 'out.txt'
+            $p = Start-Process .\Systemprotokoll.exe -ArgumentList $a -Wait -PassThru -NoNewWindow -RedirectStandardOutput $out
+            [pscustomobject]@{ Code = $p.ExitCode; Text = (Get-Content $out -Raw).Trim() }
+          }
+          $v = Exe '--version'
+          Write-Host "EXE-Version: $($v.Text)"
+          if ($v.Text -ne $env:VERSION) { throw "Falsche Version: $($v.Text)" }
+          $u = Exe '--update-test'
+          Write-Host $u.Text
+          if ($u.Code -ne 0) { throw "Update-Pruefung fehlgeschlagen" }
+
+      - name: Testlauf still (2 Tage, Schnellmodus)
+        shell: powershell
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP 'test\still'
           $von = (Get-Date).AddDays(-2).ToString('dd.MM.yyyy HH:mm')
           $p = Start-Process .\Systemprotokoll.exe -ArgumentList '-Von', "`"$von`"", '-Dauer', '2', '-Schnell', '-Still', '-Ziel', "`"$ziel`"" -NoNewWindow -Wait -PassThru
           Write-Host "Exit-Code: $($p.ExitCode)"
           $bericht = Get-ChildItem $ziel -Recurse -Filter Zustandsbericht.html | Select-Object -First 1
-          if (-not $bericht) { throw 'Kein Bericht erzeugt' }
+          if (-not $bericht) { throw 'Kein Bericht erzeugt (Ziel wird neu angelegt?)' }
           $html = Get-Content $bericht.FullName -Raw
           if ($html -notmatch 'Ausgewerteter Zeitraum') { throw 'Zeitraum fehlt im Bericht' }
-          Get-ChildItem $bericht.Directory -Recurse | Select-Object FullName, Length | Format-Table -AutoSize
+          if ($html -notmatch [regex]::Escape("Systemprotokoll.exe $env:VERSION")) { throw 'Tool-Version fehlt im Bericht' }
+
+      - name: Testlauf mit Fortschrittsfenster
+        shell: powershell
+        env:
+          SYSTEMPROTOKOLL_SCREENSHOTS: ${{ runner.temp }}\screens
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP 'test\gui'
+          $von = (Get-Date).AddDays(-2).ToString('dd.MM.yyyy HH:mm')
+          $p = Start-Process .\Systemprotokoll.exe -ArgumentList '--gui-test', '-Von', "`"$von`"", '-Dauer', '2', '-Schnell', '-Ziel', "`"$ziel`"" -PassThru
+          if (-not $p.WaitForExit(900000)) { $p.Kill(); throw 'Zeitueberschreitung' }
+          Write-Host "Exit-Code: $($p.ExitCode)"
+          Get-ChildItem $env:SYSTEMPROTOKOLL_SCREENSHOTS -ErrorAction SilentlyContinue | Format-Table Name, Length
+          if ($p.ExitCode -ne 0) { throw "GUI-Lauf fehlgeschlagen (Exit-Code $($p.ExitCode))" }
+          if (-not (Get-ChildItem $ziel -Recurse -Filter Zustandsbericht.html)) { throw 'Kein Bericht erzeugt' }
+
+      - name: Fenster-Vorschau sichern
+        if: always()
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'screens'
+          $files = Get-ChildItem $dir -Filter *.png -ErrorAction SilentlyContinue
+          if (-not $files) { Write-Host 'Keine Bilder'; exit 0 }
+          $entries = foreach ($f in $files) { $h = git hash-object -w $f.FullName; "100644 blob $h`t$($f.Name)" }
+          $liste = Join-Path $env:RUNNER_TEMP 'tree.txt'
+          [IO.File]::WriteAllText($liste, (($entries -join "`n") + "`n"))
+          $tree = Get-Content $liste -Raw | git mktree
+          $commit = git -c user.name=ci -c user.email=ci@localhost commit-tree $tree -m "Fenster-Vorschau $env:VERSION"
+          git push --force origin "${commit}:refs/ci/vorschau"
 
       - name: Testbericht hochladen
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: testbericht
           path: ${{ runner.temp }}/test
 
       - name: Paket packen
+        if: github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           New-Item -ItemType Directory Systemprotokoll-Tool | Out-Null
@@ -83,6 +118,7 @@ jobs:
           Compress-Archive Systemprotokoll-Tool/* Systemprotokoll-Tool.zip
 
       - name: Release veroeffentlichen
+        if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

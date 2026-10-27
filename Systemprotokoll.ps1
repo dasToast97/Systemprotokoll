@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Systemzustands-Protokoll fuer Windows (vor Abgabe zur Reparatur).
@@ -38,7 +38,8 @@
     .\Systemprotokoll.ps1 -Tage 90 -Schnell
 
 .PARAMETER Ziel
-    Ordner, in dem das Protokoll abgelegt wird (Standard: Desktop).
+    Speicherort: Ordner, in dem das Protokoll abgelegt wird (Standard: Desktop).
+    Wird bei Bedarf angelegt, z.B. -Ziel "D:\Nachweise".
 
 .PARAMETER Schnell
     Ueberspringt die laengeren Pruefungen (SFC und Dateisystem-Scan).
@@ -71,6 +72,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit
 }
 
+$Gui = $env:SYSTEMPROTOKOLL_GUI -eq '1'   # gestartet aus der EXE mit Fortschrittsfenster
+$OhneRueckfrage = $Still -or $Gui
+if ($Gui) { try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch {} }
+
 $ErrorActionPreference = 'Continue'
 $ProgressPreference    = 'SilentlyContinue'
 try { $Host.UI.RawUI.WindowTitle = 'Systemzustands-Protokoll' } catch {}
@@ -90,7 +95,7 @@ function ConvertTo-Zeitpunkt([string]$Text, [string]$Name) {
     throw "Ungueltige Angabe fuer -${Name}: '$Text' (Beispiel: 01.09.2026 oder 01.09.2026 08:00)"
 }
 
-function Show-ZeitraumDialog([datetime]$StartVorschlag, [datetime]$EndeVorschlag, [bool]$SchnellVorschlag) {
+function Show-ZeitraumDialog([datetime]$StartVorschlag, [datetime]$EndeVorschlag, [bool]$SchnellVorschlag, [string]$ZielVorschlag) {
     Add-Type -AssemblyName System.Windows.Forms, System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
@@ -98,7 +103,7 @@ function Show-ZeitraumDialog([datetime]$StartVorschlag, [datetime]$EndeVorschlag
     $f.Text = 'Systemzustands-Protokoll - Zeitraum'
     $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
     $f.StartPosition = 'CenterScreen'; $f.TopMost = $true
-    $f.ClientSize = New-Object System.Drawing.Size(440, 330)
+    $f.ClientSize = New-Object System.Drawing.Size(440, 390)
     $f.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
 
     $info = New-Object System.Windows.Forms.Label
@@ -142,12 +147,22 @@ function Show-ZeitraumDialog([datetime]$StartVorschlag, [datetime]$EndeVorschlag
     $cSchnell.Text = 'Schnellmodus (ohne SFC und Dateisystem-Scan)'; $cSchnell.Checked = $SchnellVorschlag
     $cSchnell.SetBounds(16, 232, 400, 24); $f.Controls.Add($cSchnell)
 
-    $lFehler = New-Object System.Windows.Forms.Label; $lFehler.ForeColor = [System.Drawing.Color]::Firebrick
-    $lFehler.SetBounds(16, 262, 410, 20); $f.Controls.Add($lFehler)
+    $lZiel = New-Object System.Windows.Forms.Label; $lZiel.Text = 'Speicherort:'; $lZiel.SetBounds(16, 268, 90, 22); $f.Controls.Add($lZiel)
+    $tZiel = New-Object System.Windows.Forms.TextBox; $tZiel.Text = $ZielVorschlag; $tZiel.SetBounds(110, 265, 228, 26); $f.Controls.Add($tZiel)
+    $bZiel = New-Object System.Windows.Forms.Button; $bZiel.Text = 'Durchsuchen...'; $bZiel.SetBounds(344, 263, 84, 28); $f.Controls.Add($bZiel)
+    $bZiel.Add_Click({
+        $fb = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fb.Description = 'Ordner fuer das Protokoll waehlen'
+        if (Test-Path $tZiel.Text) { $fb.SelectedPath = $tZiel.Text }
+        if ($fb.ShowDialog() -eq 'OK') { $tZiel.Text = $fb.SelectedPath }
+    })
 
-    $bOk = New-Object System.Windows.Forms.Button; $bOk.Text = 'Protokoll starten'; $bOk.SetBounds(196, 288, 140, 32); $f.Controls.Add($bOk)
+    $lFehler = New-Object System.Windows.Forms.Label; $lFehler.ForeColor = [System.Drawing.Color]::Firebrick
+    $lFehler.SetBounds(16, 300, 410, 20); $f.Controls.Add($lFehler)
+
+    $bOk = New-Object System.Windows.Forms.Button; $bOk.Text = 'Protokoll starten'; $bOk.SetBounds(196, 346, 140, 32); $f.Controls.Add($bOk)
     $bAbbr = New-Object System.Windows.Forms.Button; $bAbbr.Text = 'Abbrechen'; $bAbbr.DialogResult = 'Cancel'
-    $bAbbr.SetBounds(344, 288, 84, 32); $f.Controls.Add($bAbbr)
+    $bAbbr.SetBounds(344, 346, 84, 32); $f.Controls.Add($bAbbr)
     $f.AcceptButton = $bOk; $f.CancelButton = $bAbbr
 
     $bJetzt.Add_Click({ $rEnde.Checked = $true; $dEnde.Value = Get-Date })
@@ -163,7 +178,8 @@ function Show-ZeitraumDialog([datetime]$StartVorschlag, [datetime]$EndeVorschlag
         $e = if ($rEnde.Checked) { $dEnde.Value } else { $s.AddDays([double]$nDauer.Value) }
         if ($e -le $s) { $lFehler.Text = 'Das Ende muss nach dem Start liegen.'; return }
         if ($s -gt (Get-Date)) { $lFehler.Text = 'Der Start darf nicht in der Zukunft liegen.'; return }
-        $f.Tag = @{ Start = $s; Ende = $e; Schnell = $cSchnell.Checked }
+        if (-not $tZiel.Text.Trim()) { $lFehler.Text = 'Bitte einen Speicherort angeben.'; return }
+        $f.Tag = @{ Start = $s; Ende = $e; Schnell = $cSchnell.Checked; Ziel = $tZiel.Text.Trim() }
         $f.DialogResult = 'OK'; $f.Close()
     })
 
@@ -187,13 +203,13 @@ try {
 }
 catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
-    if (-not $Still) { Read-Host 'Enter druecken zum Beenden' }
+    if (-not $OhneRueckfrage) { Read-Host 'Enter druecken zum Beenden' }
     exit 1
 }
 
 if (-not $zeitAngegeben -and -not $OhneDialog -and -not $Still) {
     $wahl = $null
-    try { $wahl = Show-ZeitraumDialog $startZeit $endZeit ([bool]$Schnell) }
+    try { $wahl = Show-ZeitraumDialog $startZeit $endZeit ([bool]$Schnell) $Ziel }
     catch {
         # Fallback ohne grafische Oberflaeche
         Write-Host 'Zeitraum eingeben (leer lassen = letzte 30 Tage):' -ForegroundColor Cyan
@@ -204,18 +220,20 @@ if (-not $zeitAngegeben -and -not $OhneDialog -and -not $Still) {
             if (-not $eBis) { $e = $jetzt }
             elseif ($eBis -match '^\d+([.,]\d+)?$') { $e = $s.AddDays([double]($eBis -replace ',', '.')) }
             else { $e = ConvertTo-Zeitpunkt $eBis 'Bis' }
-            $wahl = @{ Start = $s; Ende = $e; Schnell = [bool]$Schnell }
+            $wahl = @{ Start = $s; Ende = $e; Schnell = [bool]$Schnell; Ziel = $Ziel }
         }
-        else { $wahl = @{ Start = $startZeit; Ende = $endZeit; Schnell = [bool]$Schnell } }
+        else { $wahl = @{ Start = $startZeit; Ende = $endZeit; Schnell = [bool]$Schnell; Ziel = $Ziel } }
+        $eZiel = Read-Host "  Speicherort (leer = $Ziel)"
+        if ($eZiel) { $wahl.Ziel = $eZiel }
     }
     if (-not $wahl) { Write-Host 'Abgebrochen.' -ForegroundColor Yellow; exit 0 }
-    $startZeit = $wahl.Start; $endZeit = $wahl.Ende; $Schnell = [switch]$wahl.Schnell
+    $startZeit = $wahl.Start; $endZeit = $wahl.Ende; $Schnell = [switch]$wahl.Schnell; $Ziel = $wahl.Ziel
 }
 
 if ($endZeit -gt $jetzt) { $endZeit = $jetzt }
 if ($endZeit -le $startZeit) {
     Write-Host 'Fehler: Das Ende des Zeitraums muss nach dem Start liegen.' -ForegroundColor Red
-    if (-not $Still) { Read-Host 'Enter druecken zum Beenden' }
+    if (-not $OhneRueckfrage) { Read-Host 'Enter druecken zum Beenden' }
     exit 1
 }
 $spanne       = $endZeit - $startZeit
@@ -225,7 +243,12 @@ $zeitraumKurz = '{0} - {1}' -f $startZeit.ToString('dd.MM.yyyy'), $endZeit.ToStr
 $stempel   = $jetzt.ToString('yyyy-MM-dd_HH-mm-ss')
 $ordner    = Join-Path $Ziel ('Systemprotokoll_{0}_{1}' -f $env:COMPUTERNAME, $stempel)
 $rohOrdner = Join-Path $ordner 'Rohdaten'
-New-Item -ItemType Directory -Path $rohOrdner -Force | Out-Null
+try { New-Item -ItemType Directory -Path $rohOrdner -Force -ErrorAction Stop | Out-Null }
+catch {
+    Write-Host "Fehler: Speicherort '$Ziel' ist nicht beschreibbar ($($_.Exception.Message))" -ForegroundColor Red
+    if (-not $OhneRueckfrage) { Read-Host 'Enter druecken zum Beenden' }
+    exit 1
+}
 
 Write-Host ''
 Write-Host '=====================================================' -ForegroundColor Green
@@ -246,7 +269,10 @@ function Add-Befund {
     $Befunde.Add([pscustomobject]@{ Status = $Status; Bereich = $Bereich; Details = $Details })
 }
 
-function Schritt([string]$Text) { Write-Host "[*] $Text" -ForegroundColor Cyan }
+function Schritt([string]$Text, [int]$Prozent = -1) {
+    if ($Gui) { [Console]::Out.WriteLine("##P`t$Prozent`t$Text"); [Console]::Out.Flush() }
+    else { Write-Host "[*] $Text" -ForegroundColor Cyan }
+}
 
 function Kurz([string]$s, [int]$n = 400) {
     if (-not $s) { return '' }
@@ -284,7 +310,7 @@ function Add-Abschnitt {
 # ---------------------------------------------------------------------------
 # 1. Systeminformationen
 # ---------------------------------------------------------------------------
-Schritt 'Systeminformationen'
+Schritt 'Systeminformationen erfassen' 3
 $cs   = Get-CimInstance Win32_ComputerSystem
 $os   = Get-CimInstance Win32_OperatingSystem
 $bios = Get-CimInstance Win32_BIOS
@@ -348,7 +374,7 @@ foreach ($g in $gpu) {
 # ---------------------------------------------------------------------------
 # 2. Datentraeger / SMART
 # ---------------------------------------------------------------------------
-Schritt 'Datentraeger und SMART-Status'
+Schritt 'Datenträger und SMART-Status prüfen' 8
 $pdisks = @(Get-PhysicalDisk -ErrorAction SilentlyContinue)
 $diskTab = foreach ($d in $pdisks) {
     $r = $null
@@ -399,10 +425,12 @@ if ($smart.Count -gt 0 -and -not ($smart | Where-Object PredictFailure)) {
 
 # Volumes + Dateisystem-Scan (nur lesend)
 $vols = @(Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter)
+$volNr = 0
 $volTab = foreach ($v in $vols) {
+    $volNr++
     $scan = 'nicht geprueft'
     if (-not $Schnell -and $v.FileSystem -eq 'NTFS' -and "$($v.DriveType)" -eq 'Fixed') {
-        Schritt "Dateisystem-Pruefung $($v.DriveLetter): (nur lesend, kann einige Minuten dauern)"
+        Schritt "Dateisystem von Laufwerk $($v.DriveLetter): prüfen (nur lesend)" (12 + [int](18 * $volNr / [math]::Max($vols.Count, 1)))
         try {
             $scan = [string](Repair-Volume -DriveLetter $v.DriveLetter -Scan -ErrorAction Stop)
             if ($scan -eq 'NoErrorsFound') { Add-Befund 'Dateisystem' 'OK' "Laufwerk $($v.DriveLetter): - keine Fehler gefunden" }
@@ -432,7 +460,7 @@ $volTab = foreach ($v in $vols) {
 # ---------------------------------------------------------------------------
 # 3. Ereignisprotokolle: Hardware-, E/A- und kritische Fehler
 # ---------------------------------------------------------------------------
-Schritt "Ereignisprotokolle $zeitraumKurz"
+Schritt "Hardware- und E/A-Ereignisse auswerten ($zeitraumKurz)" 32
 $Pruefungen = @(
     @{ Kat = 'Datentraeger E/A';            Prov = 'disk';                                        Ids = @(7, 11, 15, 51, 52, 153, 154); Lvl = $null }
     @{ Kat = 'Dateisystem (NTFS)';          Prov = 'Ntfs';                                        Ids = $null; Lvl = @(1, 2) }
@@ -507,7 +535,7 @@ foreach ($kat in ($Pruefungen | ForEach-Object { $_.Kat } | Select-Object -Uniqu
 $hwTab = $hwEvents | Sort-Object Zeit -Descending | Select-Object * -ExcludeProperty LevelNum
 
 # Alle kritischen Fehler und Fehler (System + Anwendung)
-Schritt 'Allgemeine kritische Fehler und Fehler'
+Schritt 'Kritische Fehler und Fehler sammeln' 42
 $sysErr = @(); $appErr = @()
 try { $sysErr = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1, 2; StartTime = $startZeit; EndTime = $endZeit } -ErrorAction Stop) } catch {}
 try { $appErr = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 1, 2; StartTime = $startZeit; EndTime = $endZeit } -ErrorAction Stop) } catch {}
@@ -546,7 +574,7 @@ $appErr | Select-Object $csvFelder | Export-Csv (Join-Path $ordner 'Fehler_Anwen
 $hwTab  | Export-Csv (Join-Path $ordner 'Hardware_Ereignisse.csv') -NoTypeInformation -Encoding UTF8 -Delimiter ';'
 
 # Original-Ereignisprotokolle sichern (unveraenderte Rohdaten)
-Schritt 'Sichere Original-Ereignisprotokolle (.evtx)'
+Schritt 'Original-Ereignisprotokolle sichern' 50
 foreach ($log in 'System', 'Application') {
     & wevtutil.exe epl $log (Join-Path $rohOrdner "$log.evtx") 2>&1 | Out-Null
 }
@@ -554,7 +582,7 @@ foreach ($log in 'System', 'Application') {
 # ---------------------------------------------------------------------------
 # 4. Geraete-Manager
 # ---------------------------------------------------------------------------
-Schritt 'Geraete-Manager'
+Schritt 'Geräte-Manager prüfen' 55
 $cmCodes = @{
     1 = 'Nicht korrekt konfiguriert'; 3 = 'Treiber beschaedigt'; 10 = 'Geraet kann nicht gestartet werden'
     12 = 'Nicht genuegend Ressourcen'; 14 = 'Neustart erforderlich'; 18 = 'Treiber neu installieren'
@@ -576,7 +604,7 @@ if ($devs.Count -eq 0) { Add-Befund 'Geraete-Manager' 'OK' 'Alle Geraete ohne Fe
 # ---------------------------------------------------------------------------
 # 5. Absturzabbilder (Bluescreens)
 # ---------------------------------------------------------------------------
-Schritt 'Absturzabbilder'
+Schritt 'Absturzabbilder suchen' 58
 $dumps = @()
 if (Test-Path "$env:SystemRoot\Minidump") { $dumps += @(Get-ChildItem "$env:SystemRoot\Minidump" -Filter *.dmp -ErrorAction SilentlyContinue) }
 if (Test-Path "$env:SystemRoot\MEMORY.DMP") { $dumps += Get-Item "$env:SystemRoot\MEMORY.DMP" }
@@ -591,7 +619,7 @@ else { Add-Befund 'Absturzabbilder' 'OK' 'Keine Absturzabbilder vorhanden' }
 # ---------------------------------------------------------------------------
 # 6. Zuverlaessigkeitsindex
 # ---------------------------------------------------------------------------
-Schritt 'Zuverlaessigkeitsindex'
+Schritt 'Zuverlässigkeitsindex lesen' 60
 $relTab = $null
 try {
     $rel = @(Get-CimInstance Win32_ReliabilityStabilityMetrics -ErrorAction Stop | Sort-Object TimeGenerated -Descending)
@@ -611,7 +639,7 @@ catch { }
 # ---------------------------------------------------------------------------
 $akkuTab = $null
 if (Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue) {
-    Schritt 'Akku'
+    Schritt 'Akkuzustand prüfen' 62
     & powercfg.exe /batteryreport /output (Join-Path $ordner 'Akkubericht.html') 2>&1 | Out-Null
     $design = (Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData -ErrorAction SilentlyContinue | Select-Object -First 1).DesignedCapacity
     $voll   = (Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity -ErrorAction SilentlyContinue | Select-Object -First 1).FullChargedCapacity
@@ -632,7 +660,7 @@ $tempTab = Get-CimInstance -Namespace root\wmi -ClassName MSAcpi_ThermalZoneTemp
 # ---------------------------------------------------------------------------
 # 9. Windows-Systemdateien
 # ---------------------------------------------------------------------------
-Schritt 'Windows-Komponentenspeicher (DISM, nur Pruefung)'
+Schritt 'Windows-Komponentenspeicher prüfen (DISM)' 64
 $dismOut = (& dism.exe /Online /Cleanup-Image /CheckHealth /English 2>&1 | Out-String).Trim()
 if ($dismOut -match 'No component store corruption detected') { Add-Befund 'Windows-Integritaet' 'OK' 'DISM: Komponentenspeicher ohne Beschaedigung' }
 elseif ($dismOut -match 'repairable|corrupt') { Add-Befund 'Windows-Integritaet' 'WARNUNG' 'DISM: Komponentenspeicher beschaedigt/reparierbar' }
@@ -640,7 +668,7 @@ else { Add-Befund 'Windows-Integritaet' 'HINWEIS' 'DISM: Ergebnis siehe Bericht'
 
 $sfcOut = ''
 if (-not $Schnell) {
-    Schritt 'Systemdatei-Pruefung (SFC /verifyonly, nur Pruefung - dauert einige Minuten)'
+    Schritt 'Systemdateien prüfen (SFC, dauert einige Minuten)' 70
     $altEnc = $null
     try { $altEnc = [Console]::OutputEncoding; [Console]::OutputEncoding = [System.Text.Encoding]::Unicode } catch {}
     $sfcOut = (& sfc.exe /verifyonly 2>&1 | Out-String)
@@ -654,7 +682,7 @@ if (-not $Schnell) {
 # ---------------------------------------------------------------------------
 # Bericht erstellen
 # ---------------------------------------------------------------------------
-Schritt 'Erstelle Bericht'
+Schritt 'Bericht erstellen' 92
 $rang = @{ 'KRITISCH' = 0; 'WARNUNG' = 1; 'HINWEIS' = 2; 'OK' = 3 }
 $befundTab = $Befunde | Sort-Object @{ e = { $rang[$_.Status] } }, Bereich
 $nKrit = @($Befunde | Where-Object Status -eq 'KRITISCH').Count
@@ -734,7 +762,7 @@ $berichtPdf = Join-Path $ordner 'Zustandsbericht.pdf'
 $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($edge) {
-    Schritt 'Erstelle PDF'
+    Schritt 'PDF erstellen' 95
     $tmpProfil = Join-Path $env:TEMP ('edgepdf_' + [guid]::NewGuid().ToString('N'))
     $fileUrl = ([Uri]$berichtHtml).AbsoluteUri
     try {
@@ -749,7 +777,7 @@ if ($edge) {
 # ---------------------------------------------------------------------------
 # Pruefsummen + ZIP
 # ---------------------------------------------------------------------------
-Schritt 'Berechne SHA256-Pruefsummen'
+Schritt 'Prüfsummen berechnen und ZIP packen' 98
 $pruefDatei = Join-Path $ordner 'Pruefsummen_SHA256.txt'
 $zeilen = @("SHA256-Pruefsummen - erstellt am $($jetzt.ToString('dd.MM.yyyy HH:mm:ss'))", '')
 $zeilen += Get-ChildItem $ordner -Recurse -File | Sort-Object FullName | Get-FileHash -Algorithm SHA256 | ForEach-Object {
@@ -780,7 +808,13 @@ Write-Host ' Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Sp
 Write-Host ' damit der Zeitpunkt der Erstellung unabhaengig belegt ist.'
 Write-Host '=====================================================' -ForegroundColor Green
 
-if (-not $Still) {
+if ($Gui) {
+    $bericht = if (Test-Path $berichtPdf) { $berichtPdf } else { $berichtHtml }
+    Schritt 'Fertig' 100
+    [Console]::Out.WriteLine(("##R`t{0}`t{1}`t{2}`t{3}`t{4}`t{5}`t{6}`t{7}`t{8}`t{9}`t{10}" -f $gesamtKlasse, $gesamt, $nKrit, $nWarn, $nHinw, $nOk, $ordner, $zip, $zipHash, $bericht, $zeitraumText))
+    [Console]::Out.Flush()
+}
+elseif (-not $Still) {
     if (Test-Path $berichtPdf) { Start-Process $berichtPdf } else { Start-Process $berichtHtml }
     Start-Process explorer.exe $ordner
     Write-Host ''

@@ -18,7 +18,7 @@ Das Tool **liest nur** und ändert nichts am System.
 
 ## Ergebnis
 
-Auf dem Desktop entsteht ein Ordner `Systemprotokoll_<PC-Name>_<Datum>` und eine ZIP-Datei
+Am gewählten Speicherort (Standard: Desktop) entsteht ein Ordner `Systemprotokoll_<PC-Name>_<Datum>` und eine ZIP-Datei
 mit demselben Inhalt:
 
 - `Zustandsbericht.pdf` / `.html`: Gesamtbewertung (grün, gelb oder rot), alle Befunde und Unterschriftsfelder
@@ -39,9 +39,24 @@ Fenster mit den Neuerungen und den Optionen **Jetzt aktualisieren**, **Später**
 **Diese Version überspringen**. Beim Aktualisieren wird die neue EXE heruntergeladen, per
 SHA256 geprüft, an die Stelle der alten gelegt und sofort gestartet.
 
+![Update-Fenster](docs/update.png)
+
 Ohne Internet oder mit `--kein-update` startet das Tool ohne Prüfung. Im stillen Modus (`-Still`)
 wird nicht nach Updates gefragt. `Systemprotokoll.exe --version` zeigt die installierte Version.
 Selbst gebaute EXEs (`EXE_erstellen.bat`) haben kein Auto-Update.
+
+## So sieht es aus
+
+Nach dem Start (und der Bestätigung der Administratorrechte) wählst du Zeitraum und Speicherort:
+
+![Startfenster](docs/startfenster.png)
+
+Danach läuft die Prüfung im Hintergrund, ohne PowerShell-Fenster. Du siehst die einzelnen Schritte,
+den Fortschritt in Prozent und die Laufzeit. Am Ende zeigt das Fenster die Gesamtbewertung, den
+Speicherort und die SHA256-Prüfsumme des ZIP-Archivs. Über „Bericht öffnen“ und „Ordner öffnen“
+kommst du direkt zum Ergebnis.
+
+![Fortschrittsfenster](docs/fortschritt.png)
 
 ## Benutzung ohne EXE
 
@@ -52,8 +67,15 @@ Selbst gebaute EXEs (`EXE_erstellen.bat`) haben kein Auto-Update.
 ### Zeitraum festlegen
 
 Beim Start öffnet sich ein Fenster, in dem du den **Start** (Datum und Uhrzeit) und entweder das
-**Ende** oder eine **Dauer in Tagen** auswählst. Es gibt Schnellwahl-Knöpfe (7, 30, 90, 365 Tage,
-Alles) und einen Schnellmodus ohne SFC und Dateisystem-Scan.
+**Ende** oder eine **Dauer in Tagen** auswählst. Es gibt Schnellwahl-Knöpfe (7, 30, 90 Tage,
+1 Jahr, Alles) und einen Schnellmodus ohne SFC und Dateisystem-Scan.
+
+### Speicherort festlegen
+
+Im Startfenster bestimmst du, wo das Protokoll gespeichert wird (Standard: Desktop). Über
+„Durchsuchen …“ wählst du einen Ordner aus, z.B. einen USB-Stick oder ein Netzlaufwerk. Der zuletzt
+gewählte Ordner wird beim nächsten Start vorgeschlagen. Existiert der Ordner noch nicht, wird er
+angelegt. Per Parameter geht das mit `-Ziel "D:\Nachweise"`.
 
 Alternativ per Parameter, dann erscheint kein Fenster (funktioniert mit `.bat` und `.exe`):
 
@@ -62,7 +84,8 @@ Systemprotokoll.exe -Von 01.09.2026 -Bis "15.10.2026 18:00"   :: fester Zeitraum
 Systemprotokoll.exe -Von 01.09.2026 -Dauer 14                 :: 14 Tage ab Start
 Systemprotokoll.exe -Tage 90                                  :: die letzten 90 Tage
 Systemprotokoll.exe -Schnell                                  :: ohne SFC und Dateisystem-Scan
-Systemprotokoll.exe -Tage 7 -Still                            :: ohne Fenster und Rückfrage
+Systemprotokoll.exe -Tage 30 -Ziel "E:\Nachweise"            :: anderer Speicherort
+Systemprotokoll.exe -Tage 7 -Still                            :: ganz ohne Fenster (z.B. geplante Aufgabe)
 ```
 
 Gibst du bei `-Bis` nur ein Datum an, zählt der ganze Tag mit. Ein Ende in der Zukunft wird

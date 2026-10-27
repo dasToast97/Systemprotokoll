@@ -115,29 +115,18 @@ static class Updater
     public static bool CheckAndOffer(string[] args)
     {
         if (string.IsNullOrEmpty(BuildInfo.Repo)) return false;
-        Console.WriteLine("Suche nach Updates ...");
-        ReleaseInfo rel;
-        try
+        ReleaseInfo rel = null;
+        WarteForm.Ausfuehren("Suche nach Updates …", true, delegate
         {
-            ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; // TLS 1.2
-            rel = GetLatest(6000);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("  Update-Pruefung nicht moeglich (" + ex.Message + ") - fahre fort.");
-            return false;
-        }
+            try
+            {
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; // TLS 1.2
+                rel = GetLatest(5000);
+            }
+            catch { rel = null; }   // offline o.ae.: einfach ohne Update weiter
+        });
 
-        if (rel == null || !IsNewer(rel.Version))
-        {
-            Console.WriteLine("  Aktuelle Version " + CurrentVersion.ToString(3) + " ist die neueste.");
-            return false;
-        }
-        if (ReadSkipped() == rel.Tag)
-        {
-            Console.WriteLine("  Version " + rel.Version.ToString(3) + " wurde uebersprungen.");
-            return false;
-        }
+        if (rel == null || !IsNewer(rel.Version) || ReadSkipped() == rel.Tag) return false;
 
         switch (AskDialog(rel))
         {
@@ -159,8 +148,23 @@ static class Updater
 
     static DialogResult AskDialog(ReleaseInfo rel)
     {
-        Application.EnableVisualStyles();
-        using (var f = new Form())
+        using (var f = BuildAskForm(rel)) return f.ShowDialog();
+    }
+
+    /// Nur fuer Tests: Bild des Update-Fensters.
+    public static void VorschauAskDialog()
+    {
+        var rel = new ReleaseInfo();
+        rel.Version = new Version(CurrentVersion.Major, CurrentVersion.Minor, CurrentVersion.Build + 1);
+        rel.Tag = "v" + rel.Version.ToString(3);
+        rel.Notes = "## Neu in dieser Version\n\nBeispieltext fuer die Vorschau\n\n- Punkt eins\n- Punkt zwei";
+        Ui.Vorschau(BuildAskForm(rel), "4-update");
+        Ui.Vorschau(new WarteForm("Suche nach Updates \u2026", true), "5-warten");
+    }
+
+    static Form BuildAskForm(ReleaseInfo rel)
+    {
+        var f = new Form();
         {
             f.Text = "Update verfügbar";
             f.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -196,7 +200,8 @@ static class Updater
 
             f.AcceptButton = bYes; f.CancelButton = bLater;
             f.Shown += delegate { bYes.Focus(); };
-            return f.ShowDialog();
+            f.ShowIcon = false;
+            return f;
         }
     }
 
@@ -204,44 +209,52 @@ static class Updater
     {
         string exe = Application.ExecutablePath;
         string neu = exe + ".neu";
-        try
+        Exception fehler = null;
+
+        WarteForm.Ausfuehren("Lade Version " + rel.Version.ToString(3) + " herunter …", false, delegate(WarteForm f)
         {
-            Console.WriteLine("Lade Version " + rel.Version.ToString(3) + " herunter ...");
-            var req = Request(rel.DownloadUrl, 60000);
-            req.Accept = "application/octet-stream";
-            using (var resp = req.GetResponse())
-            using (var src = resp.GetResponseStream())
-            using (var dst = File.Create(neu))
+            try
             {
-                var buf = new byte[81920];
-                long done = 0; int n; int lastPct = -1;
-                while ((n = src.Read(buf, 0, buf.Length)) > 0)
+                var req = Request(rel.DownloadUrl, 60000);
+                req.Accept = "application/octet-stream";
+                using (var resp = req.GetResponse())
+                using (var src = resp.GetResponseStream())
+                using (var dst = File.Create(neu))
                 {
-                    dst.Write(buf, 0, n);
-                    done += n;
-                    if (rel.Size > 0)
+                    var buf = new byte[81920];
+                    long done = 0; int n; int last = -1;
+                    while ((n = src.Read(buf, 0, buf.Length)) > 0)
                     {
-                        int pct = (int)(done * 100 / rel.Size);
-                        if (pct != lastPct && pct % 10 == 0) { Console.Write("\r  " + pct + " %   "); lastPct = pct; }
+                        dst.Write(buf, 0, n);
+                        done += n;
+                        if (rel.Size > 0)
+                        {
+                            int pct = (int)(done * 100 / rel.Size);
+                            if (pct != last) { last = pct; f.BeginInvoke((MethodInvoker)delegate { f.SetzeProzent(pct, null); }); }
+                        }
                     }
                 }
-            }
-            Console.WriteLine();
 
-            var fi = new FileInfo(neu);
-            if (fi.Length < 10000 || (rel.Size > 0 && fi.Length != rel.Size))
-                throw new InvalidDataException("Die heruntergeladene Datei ist unvollständig.");
+                var fi = new FileInfo(neu);
+                if (fi.Length < 10000 || (rel.Size > 0 && fi.Length != rel.Size))
+                    throw new InvalidDataException("Die heruntergeladene Datei ist unvollst\u00e4ndig.");
 
-            if (rel.Sha256 != null)
-            {
-                string hash;
-                using (var sha = SHA256.Create())
-                using (var s = File.OpenRead(neu))
-                    hash = BitConverter.ToString(sha.ComputeHash(s)).Replace("-", "");
-                if (!string.Equals(hash, rel.Sha256, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("Prüfsumme stimmt nicht überein - Update verworfen.");
-                Console.WriteLine("  Prüfsumme OK.");
+                if (rel.Sha256 != null)
+                {
+                    string hash;
+                    using (var sha = SHA256.Create())
+                    using (var s = File.OpenRead(neu))
+                        hash = BitConverter.ToString(sha.ComputeHash(s)).Replace("-", "");
+                    if (!string.Equals(hash, rel.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Pr\u00fcfsumme stimmt nicht \u00fcberein - Update verworfen.");
+                }
             }
+            catch (Exception ex) { fehler = ex; }
+        });
+
+        try
+        {
+            if (fehler != null) throw fehler;
 
             // Laufende EXE kann umbenannt (aber nicht ueberschrieben) werden
             string old = exe + ".old";
@@ -254,7 +267,6 @@ static class Updater
             psi.UseShellExecute = true;
             psi.WorkingDirectory = Path.GetDirectoryName(exe);
             Process.Start(psi);
-            Console.WriteLine("Update installiert - neue Version wird gestartet.");
             return true;
         }
         catch (Exception ex)
