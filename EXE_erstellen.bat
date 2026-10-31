@@ -8,6 +8,11 @@ if not exist "%CSC%" (
     pause
     exit /b 1
 )
+if not exist "Reparatur.ps1" (
+    echo Reparatur.ps1 fehlt im selben Ordner.
+    pause
+    exit /b 1
+)
 if not exist "Systemprotokoll.ps1" (
     echo Systemprotokoll.ps1 fehlt im selben Ordner.
     pause
@@ -15,7 +20,7 @@ if not exist "Systemprotokoll.ps1" (
 )
 echo Erstelle Systemprotokoll.exe ...
 for %%I in ("%CSC%") do set "FW=%%~dpI"
-"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:"%FW%System.Web.Extensions.dll" /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs Updater.cs Oberflaeche.cs BuildInfo.cs
+"%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:"%FW%System.Web.Extensions.dll" /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 /resource:Reparatur.ps1,Reparatur.ps1 Launcher.cs Updater.cs Oberflaeche.cs BuildInfo.cs
 if errorlevel 1 (
     echo.
     echo Beim Erstellen ist ein Fehler aufgetreten - siehe Meldung oben.

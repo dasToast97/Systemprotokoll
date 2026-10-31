@@ -47,9 +47,11 @@ Selbst gebaute EXEs (`EXE_erstellen.bat`) haben kein Auto-Update.
 
 ## So sieht es aus
 
-Nach dem Start (und der Bestätigung der Administratorrechte) wählst du Zeitraum und Speicherort:
+Nach dem Start (und der Bestätigung der Administratorrechte) wählst du, ob nur ein Protokoll erstellt oder repariert werden soll, dazu Zeitraum und Speicherort:
 
 ![Startfenster](docs/startfenster.png)
+
+![Startfenster mit Reparatur](docs/startfenster-reparatur.png)
 
 Danach läuft die Prüfung im Hintergrund, ohne PowerShell-Fenster. Du siehst die einzelnen Schritte,
 den Fortschritt in Prozent und die Laufzeit. Am Ende zeigt das Fenster die Gesamtbewertung, den
@@ -57,6 +59,42 @@ Speicherort und die SHA256-Prüfsumme des ZIP-Archivs. Über „Bericht öffnen�
 kommst du direkt zum Ergebnis.
 
 ![Fortschrittsfenster](docs/fortschritt.png)
+
+## Reparatur mit Vorher/Nachher-Protokoll
+
+Im Startfenster kannst du statt „Nur Protokoll erstellen“ auch **„Reparieren“** wählen. Dann läuft
+alles in drei Phasen automatisch ab:
+
+1. **Protokoll vor der Reparatur** – dokumentiert den Ausgangszustand (Ordner `Vorher_…`).
+2. **Reparatur** – nur mit Windows-Bordmitteln; jede Aktion wird mit Befehl, Zeit, Ergebnis und
+   Ausgabe protokolliert (Ordner `Reparaturprotokoll_…`, HTML + JSON + Prüfsummen).
+3. **Protokoll nach der Reparatur** – mit einer Vergleichstabelle vorher/nachher je Bereich und der
+   Liste aller durchgeführten Reparaturen (Ordner `Nachher_…`).
+
+Alles landet zusammen in einem Ordner `Reparatur_<PC-Name>_<Datum>` am gewählten Speicherort.
+
+| Reparatur | Was passiert |
+|---|---|
+| Systemdateien (DISM + SFC) | `DISM /RestoreHealth` und `sfc /scannow` – repariert beschädigte Windows-Dateien (10–40 Min., braucht Internet) |
+| Datenträger / Dateisystem | Prüft alle NTFS-Laufwerke; repariert nur bei gefundenen Fehlern. Systemlaufwerk: Reparatur beim nächsten Neustart |
+| Treiber und Problemgeräte | Geräte mit Fehlercode im Geräte-Manager werden neu gestartet, bei Bedarf entfernt und neu erkannt (Treiber-Neuinstallation) |
+| Windows Update zurücksetzen | Update-Dienste neu starten, `SoftwareDistribution` und `catroot2` zurücksetzen (alte Ordner werden als `.bak_…` gesichert) |
+| Netzwerk zurücksetzen | Winsock, TCP/IP und DNS-Cache – wirksam nach Neustart |
+| Komponentenspeicher bereinigen | `DISM /StartComponentCleanup` |
+| Druckwarteschlange leeren | Druckdienst neu starten, hängende Aufträge entfernen |
+| Uhrzeit synchronisieren | `w32tm /resync` |
+
+Vorher wird auf Wunsch ein **Wiederherstellungspunkt** erstellt. Muss für eine Reparatur neu gestartet
+werden, zeigt das Ergebnisfenster das deutlich an – nach dem Neustart am besten noch einmal ein
+Protokoll erstellen.
+
+Per Kommandozeile:
+
+```bat
+Systemprotokoll.exe -Reparatur "System,Datentraeger,Treiber" -Wiederherstellungspunkt -Tage 30
+```
+
+![Reparatur-Ergebnis](docs/reparatur-ergebnis.png)
 
 ## Benutzung ohne EXE
 

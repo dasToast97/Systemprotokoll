@@ -35,16 +35,20 @@ jobs:
           $fw = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
           & "$fw\csc.exe" /nologo /target:winexe /platform:anycpu /optimize+ /out:Systemprotokoll.exe /win32manifest:app.manifest `
             /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:"$fw\System.Web.Extensions.dll" `
-            /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 Launcher.cs Updater.cs Oberflaeche.cs BuildInfo.cs
+            /resource:Systemprotokoll.ps1,Systemprotokoll.ps1 /resource:Reparatur.ps1,Reparatur.ps1 Launcher.cs Updater.cs Oberflaeche.cs BuildInfo.cs
           if ($LASTEXITCODE -ne 0) { throw "Kompilieren fehlgeschlagen" }
           Get-FileHash Systemprotokoll.exe -Algorithm SHA256 | Format-List
 
       - name: Skript auf Syntaxfehler pruefen
         shell: powershell
         run: |
-          $err = $null
-          [System.Management.Automation.Language.Parser]::ParseFile("$pwd\Systemprotokoll.ps1", [ref]$null, [ref]$err) | Out-Null
-          if ($err) { $err | ForEach-Object { Write-Host "::error::$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+          $fehler = 0
+          foreach ($datei in 'Systemprotokoll.ps1', 'Reparatur.ps1') {
+            $err = $null
+            [System.Management.Automation.Language.Parser]::ParseFile("$pwd\$datei", [ref]$null, [ref]$err) | Out-Null
+            if ($err) { $fehler++; $err | ForEach-Object { Write-Host "::error file=$datei,line=$($_.Extent.StartLineNumber)::$($_.Message)" } }
+          }
+          if ($fehler) { exit 1 }
 
       - name: Version und Update-Pruefung testen
         shell: powershell
@@ -88,17 +92,43 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "GUI-Lauf fehlgeschlagen (Exit-Code $($p.ExitCode))" }
           if (-not (Get-ChildItem $ziel -Recurse -Filter Zustandsbericht.html)) { throw 'Kein Bericht erzeugt' }
 
+      - name: Testlauf Reparatur mit Vorher/Nachher-Protokoll
+        shell: powershell
+        env:
+          SYSTEMPROTOKOLL_SCREENSHOTS: ${{ runner.temp }}\screens
+          SYSTEMPROTOKOLL_TEST_LAUFWERKE: D    # Online-Pruefung von C: dauert auf GitHub-Rechnern 5-30 Min.
+        run: |
+          $ziel = Join-Path $env:RUNNER_TEMP 'test\reparatur'
+          $p = Start-Process .\Systemprotokoll.exe -ArgumentList '--gui-test', '-Tage', '1', '-Schnell', '-Ziel', "`"$ziel`"", '-Reparatur', 'Datentraeger,Treiber,Druck,Zeit', '-Wiederherstellungspunkt' -PassThru
+          if (-not $p.WaitForExit(1500000)) { $p.Kill(); throw 'Zeitueberschreitung' }
+          Write-Host "Exit-Code: $($p.ExitCode)"
+          Get-ChildItem $ziel -Recurse -Depth 2 | Select-Object FullName | Format-Table -AutoSize
+          if ($p.ExitCode -ne 0) { throw "Reparatur-Lauf fehlgeschlagen (Exit-Code $($p.ExitCode))" }
+          $vorher  = Get-ChildItem $ziel -Recurse -Directory -Filter 'Vorher_Systemprotokoll_*' | Select-Object -First 1
+          $nachher = Get-ChildItem $ziel -Recurse -Directory -Filter 'Nachher_Systemprotokoll_*' | Select-Object -First 1
+          $rep     = Get-ChildItem $ziel -Recurse -Directory -Filter 'Reparaturprotokoll_*' | Select-Object -First 1
+          if (-not ($vorher -and $nachher -and $rep)) { throw 'Vorher-, Nachher- oder Reparaturordner fehlt' }
+          $html = Get-Content (Join-Path $nachher.FullName 'Zustandsbericht.html') -Raw
+          Write-Host "Befunde.json vorher vorhanden: $(Test-Path (Join-Path $vorher.FullName 'Befunde.json'))"
+          Select-String -Path (Join-Path $nachher.FullName 'Zustandsbericht.html') -Pattern 'Vergleich|Reparaturen' | ForEach-Object { Write-Host ($_.Line.Substring(0, [math]::Min(300, $_.Line.Length))) }
+          foreach ($muss in 'nach der Reparatur', 'Vergleich mit dem Protokoll vor der Reparatur', 'Durchgefuehrte Reparaturen') {
+            if ($html -notmatch [regex]::Escape($muss)) { throw "Im Nachher-Bericht fehlt: $muss" }
+          }
+          $json = Get-Content (Join-Path $rep.FullName 'Reparaturprotokoll.json') -Raw | ConvertFrom-Json
+          Write-Host "Reparatur: $($json.Zusammenfassung)"
+          $json.Aktionen | Format-Table Aktion, Ergebnis, Details -AutoSize -Wrap
+
       - name: Fenster-Vorschau sichern
         if: always()
         shell: pwsh
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'screens'
-          $files = Get-ChildItem $dir -Filter *.png -ErrorAction SilentlyContinue
+          $files = Get-ChildItem $dir -Include *.png, *.txt -File -Recurse -ErrorAction SilentlyContinue
           if (-not $files) { Write-Host 'Keine Bilder'; exit 0 }
           $entries = foreach ($f in $files) { $h = git hash-object -w $f.FullName; "100644 blob $h`t$($f.Name)" }
           $liste = Join-Path $env:RUNNER_TEMP 'tree.txt'
           [IO.File]::WriteAllText($liste, (($entries -join "`n") + "`n"))
-          $tree = Get-Content $liste -Raw | git mktree
+          $tree = (cmd /c "git mktree < `"$liste`"").Trim()
           $commit = git -c user.name=ci -c user.email=ci@localhost commit-tree $tree -m "Fenster-Vorschau $env:VERSION"
           git push --force origin "${commit}:refs/ci/vorschau"
 
@@ -114,7 +144,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory Systemprotokoll-Tool | Out-Null
-          Copy-Item Systemprotokoll.exe, Systemprotokoll.ps1, Systemprotokoll_starten.bat, README.md, LICENSE Systemprotokoll-Tool/
+          Copy-Item Systemprotokoll.exe, Systemprotokoll.ps1, Reparatur.ps1, Systemprotokoll_starten.bat, README.md, LICENSE Systemprotokoll-Tool/
           Compress-Archive Systemprotokoll-Tool/* Systemprotokoll-Tool.zip
 
       - name: Release veroeffentlichen

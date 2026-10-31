@@ -27,6 +27,15 @@
 
     Ohne Zeitraum-Parameter erscheint beim Start ein Fenster zur Auswahl.
 
+.PARAMETER Bezeichnung
+    'Vorher' oder 'Nachher' - kennzeichnet Protokolle rund um eine Reparatur.
+
+.PARAMETER Vergleich
+    Pfad zur Befunde.json eines frueheren Protokolls; der Bericht enthaelt dann einen Vorher/Nachher-Vergleich.
+
+.PARAMETER ReparaturLog
+    Pfad zur Reparaturprotokoll.json; die durchgefuehrten Reparaturen werden im Bericht aufgelistet.
+
 .PARAMETER Still
     Ohne Fenster und ohne Rueckfrage am Ende (z.B. fuer geplante Aufgaben); oeffnet den Bericht nicht.
 
@@ -53,7 +62,10 @@ param(
     [string]$Ziel = [Environment]::GetFolderPath('Desktop'),
     [switch]$Schnell,
     [switch]$OhneDialog,
-    [switch]$Still
+    [switch]$Still,
+    [ValidateSet('', 'Vorher', 'Nachher')][string]$Bezeichnung = '',
+    [string]$Vergleich,
+    [string]$ReparaturLog
 )
 
 # ---------------------------------------------------------------------------
@@ -241,7 +253,9 @@ $zeitraumText = '{0} bis {1} ({2:N1} Tage)' -f $startZeit.ToString('dd.MM.yyyy H
 $zeitraumKurz = '{0} - {1}' -f $startZeit.ToString('dd.MM.yyyy'), $endZeit.ToString('dd.MM.yyyy')
 
 $stempel   = $jetzt.ToString('yyyy-MM-dd_HH-mm-ss')
-$ordner    = Join-Path $Ziel ('Systemprotokoll_{0}_{1}' -f $env:COMPUTERNAME, $stempel)
+$praefix   = if ($Bezeichnung) { "${Bezeichnung}_" } else { '' }
+$ordner    = Join-Path $Ziel ('{0}Systemprotokoll_{1}_{2}' -f $praefix, $env:COMPUTERNAME, $stempel)
+$untertitel = switch ($Bezeichnung) { 'Vorher' { ' - vor der Reparatur' } 'Nachher' { ' - nach der Reparatur' } default { '' } }
 $rohOrdner = Join-Path $ordner 'Rohdaten'
 try { New-Item -ItemType Directory -Path $rohOrdner -Force -ErrorAction Stop | Out-Null }
 catch {
@@ -695,6 +709,51 @@ elseif ($nWarn) { $gesamt = 'WARNUNGEN VORHANDEN'; $gesamtKlasse = 'warn' }
 else { $gesamt = 'UNAUFFAELLIG - keine Hardware- oder kritischen Fehler festgestellt'; $gesamtKlasse = 'ok' }
 
 Add-Abschnitt -Titel 'Befunde im Ueberblick' -Daten $befundTab
+
+# Vorher/Nachher-Vergleich
+if ($Vergleich) { Write-Host "Vergleich mit: $Vergleich (vorhanden: $(Test-Path $Vergleich))" }
+if ($ReparaturLog) { Write-Host "Reparaturprotokoll: $ReparaturLog (vorhanden: $(Test-Path $ReparaturLog))" }
+if ($Vergleich -and (Test-Path $Vergleich)) {
+    try {
+        $alt = Get-Content $Vergleich -Raw -Encoding UTF8 | ConvertFrom-Json
+        $altBefunde = @($alt.Befunde)
+        $bereiche = @(@($altBefunde | ForEach-Object { $_.Bereich }) + @($Befunde | ForEach-Object { $_.Bereich }) | Select-Object -Unique)
+        $vglTab = foreach ($bereich in $bereiche) {
+            $a = @($altBefunde | Where-Object { $_.Bereich -eq $bereich } | Sort-Object { $rang[$_.Status] } | Select-Object -First 1)
+            $n = @($Befunde | Where-Object { $_.Bereich -eq $bereich } | Sort-Object { $rang[$_.Status] } | Select-Object -First 1)
+            $sa = if ($a.Count) { $a[0].Status } else { '-' }
+            $sn = if ($n.Count) { $n[0].Status } else { '-' }
+            $veraenderung = if ($sa -eq '-' -or $sn -eq '-') { '' }
+                            elseif ($rang[$sn] -gt $rang[$sa]) { 'besser' }
+                            elseif ($rang[$sn] -lt $rang[$sa]) { 'schlechter' }
+                            else { 'unveraendert' }
+            [pscustomobject]@{
+                'Bereich'          = $bereich
+                'Vorher'           = $sa
+                'Nachher'          = $sn
+                'Veraenderung'     = $veraenderung
+                'Details vorher'   = $(if ($a.Count) { $a[0].Details })
+                'Details nachher'  = $(if ($n.Count) { $n[0].Details })
+            }
+        }
+        $altZeit = try { ([datetime]$alt.Erstellt).ToString('dd.MM.yyyy HH:mm') } catch { '?' }
+        Add-Abschnitt -Titel "Vergleich mit dem Protokoll vor der Reparatur ($altZeit)" -Daten $vglTab `
+            -Info ("Gesamtbewertung vorher: {0}  |  nachher: {1}. Hinweis: Ereignis-basierte Bereiche (Bluescreens, E/A-Fehler usw.) beziehen sich nachher nur auf die Zeit seit der Reparatur." -f $alt.Gesamt, $gesamt)
+    }
+    catch { Write-Host "Vergleich fehlgeschlagen: $($_.Exception.Message) $($_.InvocationInfo.PositionMessage)"; Add-Abschnitt -Titel 'Vergleich' -Text ("Vergleich nicht moeglich: " + $_.Exception.Message) }
+}
+
+# Durchgefuehrte Reparaturen
+if ($ReparaturLog -and (Test-Path $ReparaturLog)) {
+    try {
+        $rep = Get-Content $ReparaturLog -Raw -Encoding UTF8 | ConvertFrom-Json
+        $repTab = @($rep.Aktionen) | ForEach-Object {
+            [pscustomobject]@{ 'Aktion' = $_.Aktion; 'Start' = $_.Start; 'Ende' = $_.Ende; 'Ergebnis' = $_.Ergebnis; 'Details' = $_.Details; 'Befehl' = $_.Befehl }
+        }
+        Add-Abschnitt -Titel 'Durchgefuehrte Reparaturen' -Daten $repTab -Info ($rep.Zusammenfassung + '. Vollstaendige Ausgaben: Reparaturprotokoll.html im Ordner Reparaturprotokoll_*.')
+    }
+    catch { Add-Abschnitt -Titel 'Durchgefuehrte Reparaturen' -Text ("Reparaturprotokoll nicht lesbar: " + $_.Exception.Message) }
+}
 Add-Abschnitt -Titel 'Systeminformationen' -Daten $sysTab
 Add-Abschnitt -Titel 'Arbeitsspeicher-Module' -Daten $ramTab
 Add-Abschnitt -Titel 'Grafik' -Daten $gpuTab
@@ -738,9 +797,9 @@ td.s-KRITISCH{color:var(--krit);font-weight:bold}td.s-HINWEIS{color:var(--hinw);
 $html = @"
 <!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8">
-<title>Systemzustand $(HtmlEnc $env:COMPUTERNAME) $($jetzt.ToString('dd.MM.yyyy'))</title>
+<title>Systemzustand$(HtmlEnc $untertitel) $(HtmlEnc $env:COMPUTERNAME) $($jetzt.ToString('dd.MM.yyyy'))</title>
 <style>$css</style></head><body>
-<h1>Systemzustands-Protokoll</h1>
+<h1>Systemzustands-Protokoll$(HtmlEnc $untertitel)</h1>
 <div class="sub">$(HtmlEnc "$($cs.Manufacturer) $($cs.Model)") &middot; Seriennummer: $(HtmlEnc $bios.SerialNumber) &middot; erstellt am $($jetzt.ToString('dd.MM.yyyy')) um $($jetzt.ToString('HH:mm:ss')) Uhr<br>Ausgewerteter Zeitraum: $(HtmlEnc $zeitraumText)</div>
 <div class="gesamt $gesamtKlasse">Gesamtbewertung: $(HtmlEnc $gesamt)</div>
 <div class="zahlen"><span style="color:var(--krit)">Kritisch: $nKrit</span><span style="color:var(--warn)">Warnungen: $nWarn</span><span style="color:var(--hinw)">Hinweise: $nHinw</span><span style="color:var(--ok)">OK: $nOk</span></div>
@@ -754,6 +813,8 @@ Die Original-Ereignisprotokolle (Rohdaten\*.evtx) sowie SHA256-Pruefsummen aller
 foreach ($st in 'OK', 'HINWEIS', 'WARNUNG', 'KRITISCH') {
     $html = $html.Replace("<td>$st</td>", "<td class=""s-$st"">$st</td>")
 }
+$html = $html.Replace('<td>FEHLER</td>', '<td class="s-KRITISCH">FEHLER</td>').Replace('<td>INFO</td>', '<td class="s-HINWEIS">INFO</td>')
+$html = $html.Replace('<td>besser</td>', '<td class="s-OK">besser</td>').Replace('<td>schlechter</td>', '<td class="s-KRITISCH">schlechter</td>')
 $berichtHtml = Join-Path $ordner 'Zustandsbericht.html'
 $html | Out-File $berichtHtml -Encoding UTF8
 
@@ -778,6 +839,14 @@ if ($edge) {
 # Pruefsummen + ZIP
 # ---------------------------------------------------------------------------
 Schritt 'Prüfsummen berechnen und ZIP packen' 98
+[pscustomobject]@{
+    Erstellt    = $jetzt.ToString('o')
+    Bezeichnung = $Bezeichnung
+    Zeitraum    = $zeitraumText
+    Gesamt      = $gesamt
+    Klasse      = $gesamtKlasse
+    Befunde     = $Befunde.ToArray()
+} | ConvertTo-Json -Depth 4 | Out-File (Join-Path $ordner 'Befunde.json') -Encoding UTF8
 $pruefDatei = Join-Path $ordner 'Pruefsummen_SHA256.txt'
 $zeilen = @("SHA256-Pruefsummen - erstellt am $($jetzt.ToString('dd.MM.yyyy HH:mm:ss'))", '')
 $zeilen += Get-ChildItem $ordner -Recurse -File | Sort-Object FullName | Get-FileHash -Algorithm SHA256 | ForEach-Object {
