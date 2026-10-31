@@ -1,0 +1,83 @@
+=== Protokoll vor der Reparatur (03:13:26) ===
+  
+  =====================================================
+     Systemzustands-Protokoll
+     Zeitraum: 30.10.2026 03:13 bis 31.10.2026 03:13 (1.0 Tage)
+     Ausgabe : D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Vorher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-26
+  =====================================================
+  
+[03:13:26] Systeminformationen erfassen
+[03:13:28] Datenträger und SMART-Status prüfen
+[03:13:29] Hardware- und E/A-Ereignisse auswerten (30.10.2026 - 31.10.2026)
+[03:13:29] Kritische Fehler und Fehler sammeln
+[03:13:29] Original-Ereignisprotokolle sichern
+[03:13:30] Geräte-Manager prüfen
+[03:13:30] Absturzabbilder suchen
+[03:13:30] Zuverlässigkeitsindex lesen
+[03:13:30] Windows-Komponentenspeicher prüfen (DISM)
+[03:13:30] Bericht erstellen
+[03:13:30] PDF erstellen
+[03:13:33] Prüfsummen berechnen und ZIP packen
+  
+  =====================================================
+   Gesamtbewertung: WARNUNGEN VORHANDEN
+   Zeitraum: 30.10.2026 03:13 bis 31.10.2026 03:13 (1.0 Tage)
+   Kritisch: 0 | Warnungen: 1 | Hinweise: 2 | OK: 15
+  
+   Ordner : D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Vorher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-26
+   Archiv : D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Vorher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-26.zip
+   SHA256 des Archivs:
+     3B47E7FD7CA36D5787F1D08FAD533F0CD5CA398F4725DC7A1DB71FFF87CEECED
+  
+   Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Speicher hoch,
+   damit der Zeitpunkt der Erstellung unabhaengig belegt ist.
+  =====================================================
+=== Reparatur (03:13:33) ===
+[03:13:34] Wiederherstellungspunkt erstellen
+      Wiederherstellungspunkt -> WARNUNG - Nicht moeglich (Systemwiederherstellung evtl. deaktiviert): This functionality is not supported on this operating system.
+[03:13:36] Dateisystem von Laufwerk D: prüfen und reparieren (kann dauern)
+      Dateisystem D: -> OK - Keine Fehler gefunden - keine Reparatur noetig
+[03:13:39] Problemgeräte suchen
+[03:13:42] Gerät reparieren: VMBUS\{C376C1C3-D276-48D2-90A9-C04748072C60}\{C4E5E7D1-D748-4AFC-979D-683167910A55}
+      Treiber -> WARNUNG - VMBUS\{C376C1C3-D276-48D2-90A9-C04748072C60}\{C4E5E7D1-D748-4AFC-979D-683167910A55}: Code 28 (Kein Treiber installiert) -> Code 28 (Kein Treiber installiert) - Treiber vom Hersteller oder ueber Windows Update installieren
+[03:13:50] Druckwarteschlange zurücksetzen
+      Druckwarteschlange -> OK - Druckdienst neu gestartet, 0 haengende Druckauftraege entfernt
+[03:13:51] Uhrzeit synchronisieren
+      Uhrzeit -> OK - Uhrzeit mit dem Zeitserver synchronisiert
+[03:13:52] Reparaturprotokoll schreiben
+=== Protokoll nach der Reparatur (03:13:53) ===
+  
+  =====================================================
+     Systemzustands-Protokoll
+     Zeitraum: 31.10.2026 03:12 bis 31.10.2026 03:13 (0.0 Tage)
+     Ausgabe : D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Nachher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-53
+  =====================================================
+  
+[03:13:53] Systeminformationen erfassen
+[03:13:55] Datenträger und SMART-Status prüfen
+[03:13:56] Hardware- und E/A-Ereignisse auswerten (31.10.2026 - 31.10.2026)
+[03:13:56] Kritische Fehler und Fehler sammeln
+[03:13:56] Original-Ereignisprotokolle sichern
+[03:13:56] Geräte-Manager prüfen
+[03:13:57] Absturzabbilder suchen
+[03:13:57] Zuverlässigkeitsindex lesen
+[03:13:57] Windows-Komponentenspeicher prüfen (DISM)
+[03:13:57] Bericht erstellen
+  Vergleich mit: D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Vorher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-26\Befunde.json (vorhanden: True)
+  Reparaturprotokoll: D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Reparaturprotokoll_2026-10-31_03-13-34\Reparaturprotokoll.json (vorhanden: True)
+[03:13:57] PDF erstellen
+[03:14:00] Prüfsummen berechnen und ZIP packen
+  
+  =====================================================
+   Gesamtbewertung: WARNUNGEN VORHANDEN
+   Zeitraum: 31.10.2026 03:12 bis 31.10.2026 03:13 (0.0 Tage)
+   Kritisch: 0 | Warnungen: 1 | Hinweise: 2 | OK: 15
+  
+   Ordner : D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Nachher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-53
+   Archiv : D:\a\_temp\test\reparatur\Reparatur_runnervmdaln5_2026-10-31_03-13-26\Nachher_Systemprotokoll_runnervmdaln5_2026-10-31_03-13-53.zip
+   SHA256 des Archivs:
+     648CB443E3FFDB1AE4F8375F077DD5FFB55300B1C018645D3495A917D0E00D71
+  
+   Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Speicher hoch,
+   damit der Zeitpunkt der Erstellung unabhaengig belegt ist.
+  =====================================================

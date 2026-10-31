@@ -1,0 +1,34 @@
+=== Protokoll (03:13:16) ===
+  
+  =====================================================
+     Systemzustands-Protokoll
+     Zeitraum: 29.10.2026 03:13 bis 31.10.2026 03:13 (2.0 Tage)
+     Ausgabe : D:\a\_temp\test\gui\Systemprotokoll_runnervmdaln5_2026-10-31_03-13-16
+  =====================================================
+  
+[03:13:16] Systeminformationen erfassen
+[03:13:18] Datenträger und SMART-Status prüfen
+[03:13:19] Hardware- und E/A-Ereignisse auswerten (29.10.2026 - 31.10.2026)
+[03:13:19] Kritische Fehler und Fehler sammeln
+[03:13:20] Original-Ereignisprotokolle sichern
+[03:13:20] Geräte-Manager prüfen
+[03:13:20] Absturzabbilder suchen
+[03:13:20] Zuverlässigkeitsindex lesen
+[03:13:20] Windows-Komponentenspeicher prüfen (DISM)
+[03:13:20] Bericht erstellen
+[03:13:20] PDF erstellen
+[03:13:23] Prüfsummen berechnen und ZIP packen
+  
+  =====================================================
+   Gesamtbewertung: WARNUNGEN VORHANDEN
+   Zeitraum: 29.10.2026 03:13 bis 31.10.2026 03:13 (2.0 Tage)
+   Kritisch: 0 | Warnungen: 1 | Hinweise: 2 | OK: 15
+  
+   Ordner : D:\a\_temp\test\gui\Systemprotokoll_runnervmdaln5_2026-10-31_03-13-16
+   Archiv : D:\a\_temp\test\gui\Systemprotokoll_runnervmdaln5_2026-10-31_03-13-16.zip
+   SHA256 des Archivs:
+     47B3BAF76DFDF3D4042E1C697F0F8B57B6EFEB7834DAA8A427401C836A17B3F8
+  
+   Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Speicher hoch,
+   damit der Zeitpunkt der Erstellung unabhaengig belegt ist.
+  =====================================================
