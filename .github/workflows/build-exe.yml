@@ -77,6 +77,13 @@ jobs:
           $html = Get-Content $bericht.FullName -Raw
           if ($html -notmatch 'Ausgewerteter Zeitraum') { throw 'Zeitraum fehlt im Bericht' }
           if ($html -notmatch [regex]::Escape("Systemprotokoll.exe $env:VERSION")) { throw 'Tool-Version fehlt im Bericht' }
+          if (-not (Test-Path (Join-Path $bericht.DirectoryName 'Zustandsbericht.pdf'))) { throw 'PDF wurde nicht erstellt' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z = [System.IO.Compression.ZipFile]::OpenRead("$($bericht.DirectoryName).zip")
+          $namen = @($z.Entries | ForEach-Object { $_.FullName }); $z.Dispose()
+          Write-Host "ZIP-Eintraege: $($namen -join ', ')"
+          if ($namen | Where-Object { $_.Contains([string][char]92) }) { throw 'ZIP enthaelt Backslashes in Pfaden' }
+          if ($namen -notcontains 'Rohdaten/System.evtx' -or $namen -notcontains 'Zustandsbericht.pdf') { throw 'ZIP unvollstaendig' }
 
       - name: Testlauf mit Fortschrittsfenster
         shell: powershell

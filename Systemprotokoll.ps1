@@ -630,6 +630,19 @@ if ($dumpsNeu.Count -gt 0) { Add-Befund 'Absturzabbilder' 'WARNUNG' "$($dumpsNeu
 elseif ($dumps.Count -gt 0) { Add-Befund 'Absturzabbilder' 'HINWEIS' "$($dumps.Count) Absturzabbild(er) ausserhalb des Zeitraums" }
 else { Add-Befund 'Absturzabbilder' 'OK' 'Keine Absturzabbilder vorhanden' }
 
+# Minidumps aus dem Zeitraum fuer die Fehleranalyse beilegen (max. 20 Dateien / 100 MB; MEMORY.DMP ist zu gross)
+$miniNeu = @($dumpsNeu | Where-Object { $_.DirectoryName -like '*Minidump' } | Sort-Object LastWriteTime -Descending | Select-Object -First 20)
+if ($miniNeu.Count -gt 0) {
+    $dumpZiel = Join-Path $rohOrdner 'Minidump'
+    New-Item -ItemType Directory -Path $dumpZiel -Force | Out-Null
+    $summe = 0; $kopiert = 0
+    foreach ($d in $miniNeu) {
+        if ($summe + $d.Length -gt 100MB) { break }
+        try { Copy-Item $d.FullName $dumpZiel -ErrorAction Stop; $summe += $d.Length; $kopiert++ } catch {}
+    }
+    if ($kopiert) { Add-Befund 'Absturzabbilder' 'HINWEIS' "$kopiert Minidump(s) liegen unter Rohdaten\Minidump bei (zur Analyse z.B. mit WinDbg oder BlueScreenView)" }
+}
+
 # ---------------------------------------------------------------------------
 # 6. Zuverlaessigkeitsindex
 # ---------------------------------------------------------------------------
@@ -818,21 +831,58 @@ $html = $html.Replace('<td>besser</td>', '<td class="s-OK">besser</td>').Replace
 $berichtHtml = Join-Path $ordner 'Zustandsbericht.html'
 $html | Out-File $berichtHtml -Encoding UTF8
 
-# PDF ueber Microsoft Edge (headless) erzeugen, falls vorhanden
+# PDF ueber Microsoft Edge oder Google Chrome (headless) erzeugen
+function New-PdfAusHtml([string]$Html, [string]$Pdf) {
+    $browser = @(
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+        "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    if (-not $browser) { Write-Host 'PDF: kein Edge/Chrome gefunden - nur HTML-Bericht.'; return $false }
+    $fileUrl = ([Uri]$Html).AbsoluteUri
+    foreach ($exe in $browser) {
+        foreach ($modus in '--headless=new', '--headless') {
+            $profil = Join-Path $env:TEMP ('pdfprofil_' + [guid]::NewGuid().ToString('N'))
+            $tmpPdf = Join-Path $env:TEMP ('bericht_' + [guid]::NewGuid().ToString('N') + '.pdf')
+            $argumente = @($modus, '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-extensions',
+                           '--no-pdf-header-footer', '--print-to-pdf-no-header', '--run-all-compositor-stages-before-draw',
+                           "--user-data-dir=`"$profil`"", "--print-to-pdf=`"$tmpPdf`"", "`"$fileUrl`"")
+            try {
+                $p = Start-Process -FilePath $exe -ArgumentList $argumente -PassThru -WindowStyle Hidden -ErrorAction Stop
+                $bis = (Get-Date).AddSeconds(60)
+                while ((Get-Date) -lt $bis) {
+                    Start-Sleep -Milliseconds 500
+                    if ((Test-Path $tmpPdf) -and (Get-Item $tmpPdf).Length -gt 1000 -and $p.HasExited) { break }
+                    if ($p.HasExited -and -not (Test-Path $tmpPdf)) { Start-Sleep -Seconds 2; if (-not (Test-Path $tmpPdf)) { break } }
+                }
+            }
+            catch { Write-Host "PDF: Start von $exe fehlgeschlagen: $($_.Exception.Message)" }
+            # Uebrig gebliebene Browser-Prozesse dieses Aufrufs beenden
+            try {
+                Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction SilentlyContinue |
+                    Where-Object { $_.CommandLine -and $_.CommandLine.Contains($profil) } |
+                    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            } catch {}
+            Start-Sleep -Milliseconds 500
+            Remove-Item $profil -Recurse -Force -ErrorAction SilentlyContinue
+            if ((Test-Path $tmpPdf) -and (Get-Item $tmpPdf).Length -gt 1000) {
+                Move-Item $tmpPdf $Pdf -Force
+                Write-Host "PDF erstellt mit $(Split-Path $exe -Leaf) ($modus)"
+                return $true
+            }
+            Remove-Item $tmpPdf -Force -ErrorAction SilentlyContinue
+            Write-Host "PDF: $(Split-Path $exe -Leaf) $modus hat kein PDF erzeugt."
+        }
+    }
+    return $false
+}
+
 $berichtPdf = Join-Path $ordner 'Zustandsbericht.pdf'
-$edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($edge) {
-    Schritt 'PDF erstellen' 95
-    $tmpProfil = Join-Path $env:TEMP ('edgepdf_' + [guid]::NewGuid().ToString('N'))
-    $fileUrl = ([Uri]$berichtHtml).AbsoluteUri
-    try {
-        $p = Start-Process -FilePath $edge -PassThru -WindowStyle Hidden -ArgumentList @(
-            '--headless', '--disable-gpu', '--no-pdf-header-footer', "--user-data-dir=`"$tmpProfil`"",
-            "--print-to-pdf=`"$berichtPdf`"", "`"$fileUrl`"")
-        $p | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue
-    } catch {}
-    Remove-Item $tmpProfil -Recurse -Force -ErrorAction SilentlyContinue
+Schritt 'PDF erstellen' 95
+if (-not (New-PdfAusHtml $berichtHtml $berichtPdf)) {
+    Write-Host 'PDF konnte nicht erstellt werden - der Bericht liegt als HTML vor (im Browser oeffnen und als PDF drucken).'
 }
 
 # ---------------------------------------------------------------------------
@@ -855,7 +905,17 @@ $zeilen += Get-ChildItem $ordner -Recurse -File | Sort-Object FullName | Get-Fil
 $zeilen | Out-File $pruefDatei -Encoding UTF8
 
 $zip = "$ordner.zip"
-Compress-Archive -Path (Join-Path $ordner '*') -DestinationPath $zip -Force
+# Eigenes ZIP statt Compress-Archive: PowerShell 5.1 schreibt dort '\' als Pfadtrenner, was nicht dem ZIP-Standard entspricht
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+if (Test-Path $zip) { Remove-Item $zip -Force }
+$zipStream = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($datei in Get-ChildItem $ordner -Recurse -File | Sort-Object FullName) {
+        $eintrag = $datei.FullName.Substring($ordner.Length + 1).Replace('\', '/')
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipStream, $datei.FullName, $eintrag, [System.IO.Compression.CompressionLevel]::Optimal)
+    }
+}
+finally { $zipStream.Dispose() }
 $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash
 
 # ---------------------------------------------------------------------------
