@@ -1,0 +1,35 @@
+=== Protokoll (13:58:37) ===
+  
+  =====================================================
+     Systemzustands-Protokoll
+     Zeitraum: 03.11.2026 13:58 bis 05.11.2026 13:58 (2.0 Tage)
+     Ausgabe : D:\a\_temp\test\gui\Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-38
+  =====================================================
+  
+[13:58:38] Systeminformationen erfassen
+[13:58:39] Datenträger und SMART-Status prüfen
+[13:58:41] Hardware- und E/A-Ereignisse auswerten (03.11.2026 - 05.11.2026)
+[13:58:41] Kritische Fehler und Fehler sammeln
+[13:58:41] Original-Ereignisprotokolle sichern
+[13:58:41] Geräte-Manager prüfen
+[13:58:41] Absturzabbilder suchen
+[13:58:41] Zuverlässigkeitsindex lesen
+[13:58:41] Windows-Komponentenspeicher prüfen (DISM)
+[13:58:41] Bericht erstellen
+[13:58:41] PDF erstellen
+  PDF erstellt mit msedge.exe (--headless=new)
+[13:58:46] Prüfsummen berechnen und ZIP packen
+  
+  =====================================================
+   Gesamtbewertung: WARNUNGEN VORHANDEN
+   Zeitraum: 03.11.2026 13:58 bis 05.11.2026 13:58 (2.0 Tage)
+   Kritisch: 0 | Warnungen: 1 | Hinweise: 3 | OK: 15
+  
+   Ordner : D:\a\_temp\test\gui\Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-38
+   Archiv : D:\a\_temp\test\gui\Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-38.zip
+   SHA256 des Archivs:
+     71FCCB6A004FEA5B507F81DB9CB3BC7097FDF383BF19E0A860D7AAE968233736
+  
+   Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Speicher hoch,
+   damit der Zeitpunkt der Erstellung unabhaengig belegt ist.
+  =====================================================

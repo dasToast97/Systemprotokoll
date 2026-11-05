@@ -1,0 +1,85 @@
+=== Protokoll vor der Reparatur (13:58:48) ===
+  
+  =====================================================
+     Systemzustands-Protokoll
+     Zeitraum: 04.11.2026 13:58 bis 05.11.2026 13:58 (1.0 Tage)
+     Ausgabe : D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Vorher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-48
+  =====================================================
+  
+[13:58:49] Systeminformationen erfassen
+[13:58:50] Datenträger und SMART-Status prüfen
+[13:58:51] Hardware- und E/A-Ereignisse auswerten (04.11.2026 - 05.11.2026)
+[13:58:52] Kritische Fehler und Fehler sammeln
+[13:58:52] Original-Ereignisprotokolle sichern
+[13:58:52] Geräte-Manager prüfen
+[13:58:52] Absturzabbilder suchen
+[13:58:52] Zuverlässigkeitsindex lesen
+[13:58:52] Windows-Komponentenspeicher prüfen (DISM)
+[13:58:52] Bericht erstellen
+[13:58:52] PDF erstellen
+  PDF erstellt mit msedge.exe (--headless=new)
+[13:58:56] Prüfsummen berechnen und ZIP packen
+  
+  =====================================================
+   Gesamtbewertung: WARNUNGEN VORHANDEN
+   Zeitraum: 04.11.2026 13:58 bis 05.11.2026 13:58 (1.0 Tage)
+   Kritisch: 0 | Warnungen: 1 | Hinweise: 2 | OK: 15
+  
+   Ordner : D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Vorher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-48
+   Archiv : D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Vorher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-48.zip
+   SHA256 des Archivs:
+     65AADE04DB5C888CA8B321F723504A6E0970CC79CDF7EEB776605B5163FD1772
+  
+   Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Speicher hoch,
+   damit der Zeitpunkt der Erstellung unabhaengig belegt ist.
+  =====================================================
+=== Reparatur (13:58:56) ===
+[13:58:57] Wiederherstellungspunkt erstellen
+      Wiederherstellungspunkt -> WARNUNG - Nicht moeglich (Systemwiederherstellung evtl. deaktiviert): This functionality is not supported on this operating system.
+[13:58:59] Dateisystem von Laufwerk D: prüfen und reparieren (kann dauern)
+      Dateisystem D: -> OK - Keine Fehler gefunden - keine Reparatur noetig
+[13:59:02] Problemgeräte suchen
+[13:59:05] Gerät reparieren: VMBUS\{C376C1C3-D276-48D2-90A9-C04748072C60}\{C4E5E7D1-D748-4AFC-979D-683167910A55}
+      Treiber -> WARNUNG - VMBUS\{C376C1C3-D276-48D2-90A9-C04748072C60}\{C4E5E7D1-D748-4AFC-979D-683167910A55}: Code 28 (Kein Treiber installiert) -> Code 28 (Kein Treiber installiert) - Treiber vom Hersteller oder ueber Windows Update installieren
+[13:59:13] Druckwarteschlange zurücksetzen
+      Druckwarteschlange -> OK - Druckdienst neu gestartet, 0 haengende Druckauftraege entfernt
+[13:59:14] Uhrzeit synchronisieren
+      Uhrzeit -> OK - Uhrzeit mit dem Zeitserver synchronisiert
+[13:59:16] Reparaturprotokoll schreiben
+=== Protokoll nach der Reparatur (13:59:16) ===
+  
+  =====================================================
+     Systemzustands-Protokoll
+     Zeitraum: 05.11.2026 13:57 bis 05.11.2026 13:59 (0.0 Tage)
+     Ausgabe : D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Nachher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-59-16
+  =====================================================
+  
+[13:59:16] Systeminformationen erfassen
+[13:59:18] Datenträger und SMART-Status prüfen
+[13:59:19] Hardware- und E/A-Ereignisse auswerten (05.11.2026 - 05.11.2026)
+[13:59:20] Kritische Fehler und Fehler sammeln
+[13:59:20] Original-Ereignisprotokolle sichern
+[13:59:20] Geräte-Manager prüfen
+[13:59:20] Absturzabbilder suchen
+[13:59:20] Zuverlässigkeitsindex lesen
+[13:59:20] Windows-Komponentenspeicher prüfen (DISM)
+[13:59:20] Bericht erstellen
+  Vergleich mit: D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Vorher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-58-48\Befunde.json (vorhanden: True)
+  Reparaturprotokoll: D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Reparaturprotokoll_2026-11-05_13-58-57\Reparaturprotokoll.json (vorhanden: True)
+[13:59:20] PDF erstellen
+  PDF erstellt mit msedge.exe (--headless=new)
+[13:59:24] Prüfsummen berechnen und ZIP packen
+  
+  =====================================================
+   Gesamtbewertung: WARNUNGEN VORHANDEN
+   Zeitraum: 05.11.2026 13:57 bis 05.11.2026 13:59 (0.0 Tage)
+   Kritisch: 0 | Warnungen: 1 | Hinweise: 2 | OK: 15
+  
+   Ordner : D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Nachher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-59-16
+   Archiv : D:\a\_temp\test\reparatur\Reparatur_runnervmm7ud1_2026-11-05_13-58-48\Nachher_Systemprotokoll_runnervmm7ud1_2026-11-05_13-59-16.zip
+   SHA256 des Archivs:
+     4B8A7982BD6611677CFCE06558B004D50519925D439C1F2FA3426E97CE9C048A
+  
+   Tipp: Schicke dir das ZIP per E-Mail oder lade es in einen Cloud-Speicher hoch,
+   damit der Zeitpunkt der Erstellung unabhaengig belegt ist.
+  =====================================================
